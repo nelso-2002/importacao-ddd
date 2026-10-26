@@ -1,0 +1,10 @@
+# IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# SO
+.DS_Store
+Thumbs.db

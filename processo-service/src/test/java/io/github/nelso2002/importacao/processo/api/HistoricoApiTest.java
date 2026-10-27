@@ -66,6 +66,10 @@ class HistoricoApiTest {
         assertThat(resposta).bodyJson().extractingPath("$[*].versao").isEqualTo(List.of(1, 2, 3));
         assertThat(resposta).bodyJson().extractingPath("$[0].dados.referencia").isEqualTo("IMP-HISTORICO");
         assertThat(resposta).bodyJson().extractingPath("$[0].ocorridoEm").isNotNull();
+        // quem fez o quê: os dois comandos vieram com o token do operador; o cancelamento foi direto no
+        // agregado, fora de uma requisição, então não há usuário ligado ao ScopedValue
+        assertThat(resposta).bodyJson().extractingPath("$[*].usuario")
+                .isEqualTo(List.of("operador", "operador", "sistema"));
     }
 
     @Test

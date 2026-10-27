@@ -19,7 +19,9 @@ final class Tokens {
 
     static RequestPostProcessor usuario(String nome, String... papeis) {
         return jwt()
+                // o jwt() usa o sub como nome da autenticação; os tokens reais usam preferred_username (conversor)
                 .jwt(token -> token
+                        .subject(nome)
                         .claim("preferred_username", nome)
                         .claim("realm_access", Map.of("roles", List.of(papeis))))
                 .authorities(SegurancaConfig::papeis);

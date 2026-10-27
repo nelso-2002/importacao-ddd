@@ -107,6 +107,7 @@ class OutboxTest {
         assertThat(eventos).extracting(PublicadorOutbox.EventoPublicado::tipo).containsExactly("ProcessoAberto", "ItemAdicionado");
         assertThat(eventos).extracting(PublicadorOutbox.EventoPublicado::versao).containsExactly(1, 2);
         assertThat(eventos.getFirst().dados().get("referencia").asString()).isEqualTo("IMP-OUTBOX");
+        assertThat(eventos).extracting(PublicadorOutbox.EventoPublicado::usuario).containsOnly("sistema");
         // mesma chave → mesma partição → ordem garantida
         assertThat(mensagens).extracting(ConsumerRecord::partition).containsOnly(mensagens.getFirst().partition());
     }

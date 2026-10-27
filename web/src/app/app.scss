@@ -1,0 +1,17 @@
+.topo {
+  padding: 0.9rem 1.5rem;
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+}
+
+.marca {
+  font-weight: 600;
+  color: var(--texto);
+  text-decoration: none;
+}
+
+main {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}

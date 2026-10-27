@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: consulta-service
+  docker:
+    compose:
+      # Mesmo Postgres do processo-service: a projeção processo_resumo é escrita por ele.
+      # Banco compartilhado entre serviços é provisório; na Etapa 4 cada serviço tem o seu.
+      file: ../processo-service/compose.yaml
+      # quem sobe e desce o container é o processo-service
+      lifecycle-management: start-only
+  webflux:
+    problemdetails:
+      enabled: true
+
+server:
+  port: 8081
+
+consulta:
+  intervalo-polling: 2s

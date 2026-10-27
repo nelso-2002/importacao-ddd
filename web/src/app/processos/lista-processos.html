@@ -1,0 +1,56 @@
+<div class="titulo">
+  <h2>Processos</h2>
+  <a routerLink="/processos/novo" class="botao">Novo processo</a>
+</div>
+
+<form class="filtros" [formGroup]="filtro">
+  <input
+    type="search"
+    formControlName="busca"
+    placeholder="Buscar por referência ou CNPJ"
+    aria-label="Buscar por referência ou CNPJ"
+  />
+  <select formControlName="status" aria-label="Filtrar por status">
+    <option value="">Todos os status</option>
+    @for (status of todosStatus; track status) {
+      <option [value]="status">{{ rotulos[status] }}</option>
+    }
+  </select>
+</form>
+
+@if (erro()) {
+  <p class="aviso erro">Não foi possível carregar os processos. O consulta-service está no ar?</p>
+} @else if (carregando()) {
+  <p class="aviso">Carregando…</p>
+} @else {
+  <table>
+    <thead>
+      <tr>
+        <th>Referência</th>
+        <th>Importador</th>
+        <th>Status</th>
+        <th class="numero">Itens</th>
+        <th>Atualizado em</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (processo of processos(); track processo.id) {
+        <tr [class.destacado]="destacados().has(processo.id)">
+          <td><a [routerLink]="['/processos', processo.id]">{{ processo.referencia }}</a></td>
+          <td class="mono">{{ processo.importador }}</td>
+          <td>
+            <span class="status" [attr.data-status]="processo.status">
+              {{ rotulos[processo.status] }}
+            </span>
+          </td>
+          <td class="numero">{{ processo.quantidadeItens }}</td>
+          <td>{{ processo.atualizadoEm | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="5" class="vazio">Nenhum processo encontrado.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+}

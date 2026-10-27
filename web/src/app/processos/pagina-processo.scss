@@ -1,0 +1,55 @@
+.cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+
+  h2 {
+    margin: 0;
+  }
+
+  p {
+    margin: 0.25rem 0 0;
+    color: var(--texto-suave);
+  }
+}
+
+section {
+  margin-top: 2rem;
+}
+
+.linha-do-tempo {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  border-left: 2px solid var(--borda);
+
+  li {
+    position: relative;
+    display: grid;
+    gap: 0.15rem;
+    padding: 0 0 1.25rem 0.75rem;
+
+    // marcador sobre a linha vertical
+    &::before {
+      content: '';
+      position: absolute;
+      left: -1.25rem;
+      top: 0.35rem;
+      width: 0.75rem;
+      height: 0.75rem;
+      margin-left: -0.4rem;
+      border-radius: 50%;
+      background: var(--destaque);
+    }
+  }
+
+  time {
+    font-size: 0.8rem;
+    color: var(--texto-suave);
+  }
+
+  span {
+    color: var(--texto-suave);
+  }
+}

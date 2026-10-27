@@ -1,0 +1,37 @@
+<a routerLink="/" class="voltar">← Processos</a>
+
+<h2>Novo processo</h2>
+
+<form class="formulario" [formGroup]="form" (ngSubmit)="enviar()">
+  <label class="campo">
+    <span>CNPJ do importador</span>
+    <input formControlName="importador" placeholder="11.222.333/0001-81 ou 12.ABC.345/01DE-35" />
+    @if (form.controls.importador.touched && form.controls.importador.invalid) {
+      <small class="erro-campo">
+        @if (form.controls.importador.hasError('required')) {
+          Informe o CNPJ.
+        } @else {
+          CNPJ deve ter 12 letras ou dígitos e 2 dígitos verificadores.
+        }
+      </small>
+    }
+  </label>
+
+  <label class="campo">
+    <span>Referência</span>
+    <input formControlName="referencia" placeholder="IMP-2026/0001" />
+    @if (form.controls.referencia.touched && form.controls.referencia.hasError('required')) {
+      <small class="erro-campo">Informe a referência.</small>
+    }
+  </label>
+
+  @if (erro(); as mensagem) {
+    <p class="aviso erro">{{ mensagem }}</p>
+  }
+
+  <div class="acoes">
+    <button type="submit" [disabled]="enviando()">
+      {{ enviando() ? 'Abrindo…' : 'Abrir processo' }}
+    </button>
+  </div>
+</form>

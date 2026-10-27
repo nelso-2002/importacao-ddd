@@ -1,5 +1,6 @@
 package io.github.nelso2002.importacao.consulta;
 
+import io.github.nelso2002.importacao.consulta.ConsultaProcessos.ProcessoResumo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +17,7 @@ import java.util.UUID;
  * StepVerifier: assina o Flux/Mono e verifica, em ordem, cada sinal emitido (onNext, onComplete, onError).
  * Sem ele, testar um Flux exigiria block() e perderia justamente o comportamento assíncrono.
  */
-@SpringBootTest(properties = {"spring.sql.init.mode=always", "consulta.intervalo-polling=200ms"})
+@SpringBootTest
 @Import(TestcontainersConfiguration.class)
 class ConsultaProcessosTest {
 
@@ -60,23 +61,15 @@ class ConsultaProcessosTest {
     }
 
     @Test
-    void alteradosDepoisDeIgnoraOQueJaFoiVisto() {
-        inserir("IMP-VELHO", "ABERTO");
-        var depoisDoVelho = OffsetDateTime.now().plusSeconds(1);
-
-        StepVerifier.create(consultas.alteradosDepoisDe(depoisDoVelho))
-                .verifyComplete();
-    }
-
-    @Test
     void doisAssinantesRecebemAMesmaMudanca() {
-        var primeiro = monitor.mudancas().filter(resumo -> resumo.referencia().equals("IMP-MULTICAST"));
-        var segundo = monitor.mudancas().filter(resumo -> resumo.referencia().equals("IMP-MULTICAST"));
+        var resumo = new ProcessoResumo(UUID.randomUUID(), "IMP-MULTICAST", "11222333000181", "ABERTO", 0, OffsetDateTime.now());
+        var primeiro = monitor.mudancas().filter(mudanca -> mudanca.id().equals(resumo.id()));
+        var segundo = monitor.mudancas().filter(mudanca -> mudanca.id().equals(resumo.id()));
 
         StepVerifier.create(primeiro.zipWith(segundo))
-                .then(() -> inserir("IMP-MULTICAST", "ABERTO"))
-                .expectNextMatches(par -> par.getT1().id().equals(par.getT2().id()))
+                .then(() -> monitor.publicar(resumo))
+                .expectNextMatches(par -> par.getT1().equals(resumo) && par.getT2().equals(resumo))
                 .thenCancel()
-                .verify(Duration.ofSeconds(10));
+                .verify(Duration.ofSeconds(5));
     }
 }

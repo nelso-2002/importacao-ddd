@@ -4,11 +4,11 @@ import io.github.nelso2002.importacao.processo.domain.ProcessoEvento;
 import io.github.nelso2002.importacao.processo.domain.ProcessoId;
 import io.github.nelso2002.importacao.processo.domain.ProcessoImportacao;
 import io.github.nelso2002.importacao.processo.domain.ProcessoRepository;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Arrays;
@@ -31,15 +31,16 @@ public class ProcessoRepositoryEventStore implements ProcessoRepository {
 
     private final JdbcClient jdbc;
     private final JsonMapper json;
-    private final ApplicationEventPublisher publicador;
 
-    public ProcessoRepositoryEventStore(JdbcClient jdbc, JsonMapper json, ApplicationEventPublisher publicador) {
+    public ProcessoRepositoryEventStore(JdbcClient jdbc, JsonMapper json) {
         this.jdbc = jdbc;
         this.json = json;
-        this.publicador = publicador;
     }
 
+    // Transacional aqui também: event_store e outbox têm de ser gravados juntos mesmo se alguém
+    // chamar salvar() fora de um caso de uso. Dentro de um, só participa da transação já aberta.
     @Override
+    @Transactional
     public void salvar(ProcessoImportacao processo) {
         var novos = processo.retirarEventos();
         // versão em que o processo estava quando foi carregado; cada evento novo ocupa a próxima
@@ -47,16 +48,20 @@ public class ProcessoRepositoryEventStore implements ProcessoRepository {
         try {
             for (var evento : novos) {
                 versao++;
+                var tipo = evento.getClass().getSimpleName();
+                var payload = json.writeValueAsString(evento);
                 jdbc.sql("insert into event_store (aggregate_id, version, type, payload) values (?, ?, ?, ?::jsonb)")
-                        .params(processo.id().valor(), versao, evento.getClass().getSimpleName(), json.writeValueAsString(evento))
+                        .params(processo.id().valor(), versao, tipo, payload)
+                        .update();
+                // mesma transação: ou o evento entra no histórico E na fila de publicação, ou em nenhum dos dois
+                jdbc.sql("insert into outbox (aggregate_id, version, type, payload) values (?, ?, ?, ?::jsonb)")
+                        .params(processo.id().valor(), versao, tipo, payload)
                         .update();
             }
         } catch (DuplicateKeyException e) {
             throw new OptimisticLockingFailureException(
                     "Processo " + processo.id().valor() + " foi alterado por outra gravação (versão " + versao + ")", e);
         }
-        // só depois de todos gravados: um conflito de versão não chega a atualizar as projeções
-        novos.forEach(publicador::publishEvent);
     }
 
     @Override

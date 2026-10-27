@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.test.StepVerifier;
@@ -22,9 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * HTTP de ponta a ponta com Postgres real: as linhas da projeção são inseridas direto no banco,
- * fazendo o papel do projetor do processo-service.
+ * e o stream é alimentado por mensagens publicadas no Kafka, como faria o processo-service.
  */
-@SpringBootTest(properties = {"spring.sql.init.mode=always", "consulta.intervalo-polling=200ms"})
+@SpringBootTest
 @AutoConfigureWebTestClient
 @Import(TestcontainersConfiguration.class)
 class ConsultaControllerTest {
@@ -34,6 +35,9 @@ class ConsultaControllerTest {
 
     @Autowired
     private DatabaseClient db;
+
+    @Autowired
+    private KafkaTemplate<String, String> kafka;
 
     @BeforeEach
     void limpar() {
@@ -124,9 +128,15 @@ class ConsultaControllerTest {
                 .getResponseBody()
                 .filter(evento -> evento.data() != null);   // ignora os comentários de keep-alive
 
-        // assina o stream, só então grava a mudança, e espera o evento chegar pelo polling
+        var id = UUID.randomUUID();
+        var mensagem = """
+                {"aggregateId": "%s", "versao": 1, "tipo": "ProcessoAberto", "ocorridoEm": "2026-10-27T10:00:00Z",
+                 "dados": {"importador": {"numero": "11222333000181"}, "referencia": "IMP-AO-VIVO"}}
+                """.formatted(id);
+
+        // assina o stream, só então publica no Kafka; o consumidor projeta e repassa ao SSE
         StepVerifier.create(eventos)
-                .then(() -> inserir("IMP-AO-VIVO", "ABERTO", "[]", "0 seconds"))
+                .then(() -> kafka.send("processo-eventos", id.toString(), mensagem))
                 .assertNext(evento -> {
                     assertThat(evento.event()).isEqualTo("processo");
                     assertThat(evento.data().referencia()).isEqualTo("IMP-AO-VIVO");

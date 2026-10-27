@@ -1,0 +1,131 @@
+# Sistema completo: docker compose up -d --build  →  http://localhost:4200
+#
+#   web (nginx :4200) ──/api/processos──► processo-service ──► postgres-processo
+#        │                                        │ outbox
+#        └──────────/api/consultas──► consulta-service ◄── kafka (processo-eventos)
+#                                                 └──► postgres-consulta
+#
+# Senhas fixas e em texto puro: ambiente de estudo, não de produção.
+
+services:
+
+  postgres-processo:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: processo
+      POSTGRES_USER: processo
+      POSTGRES_PASSWORD: processo
+    volumes:
+      - dados-processo:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U processo -d processo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-consulta:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: consulta
+      POSTGRES_USER: consulta
+      POSTGRES_PASSWORD: consulta
+    volumes:
+      - dados-consulta:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consulta -d consulta"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      # KRaft de um nó só: o mesmo processo é broker e controller (no lugar do Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Dois endereços: "kafka:29092" para os containers desta rede e "localhost:9092" para a máquina.
+      # O broker devolve ao cliente o endereço do listener em que ele conectou, então cada lado recebe um que funciona.
+      KAFKA_LISTENERS: INTERNO://:29092,EXTERNO://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNO://kafka:29092,EXTERNO://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNO:PLAINTEXT,EXTERNO:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNO
+      # um broker só: os tópicos internos não podem pedir 3 réplicas
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "9092:9092"
+    volumes:
+      - dados-kafka:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+
+  processo-service:
+    build: ./processo-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-processo:5432/processo
+      SPRING_DATASOURCE_USERNAME: processo
+      SPRING_DATASOURCE_PASSWORD: processo
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # o suporte a Docker Compose do Spring é para desenvolvimento; aqui o compose é este arquivo
+      SPRING_DOCKER_COMPOSE_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-processo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      # a imagem JRE não tem curl/wget: um GET feito pelo próprio bash (/dev/tcp)
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q UP <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  consulta-service:
+    build: ./consulta-service
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres-consulta:5432/consulta
+      SPRING_R2DBC_USERNAME: consulta
+      SPRING_R2DBC_PASSWORD: consulta
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DOCKER_COMPOSE_ENABLED: "false"
+    ports:
+      - "8081:8081"
+    # Não depende do processo-service: os dois só se falam pelo Kafka.
+    depends_on:
+      postgres-consulta:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8081 && printf "GET /actuator/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q UP <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build: ./web
+    ports:
+      - "4200:8080"
+    # o nginx resolve os nomes dos serviços ao subir e a tela precisa das duas APIs
+    depends_on:
+      processo-service:
+        condition: service_healthy
+      consulta-service:
+        condition: service_healthy
+
+volumes:
+  dados-processo:
+  dados-consulta:
+  dados-kafka:

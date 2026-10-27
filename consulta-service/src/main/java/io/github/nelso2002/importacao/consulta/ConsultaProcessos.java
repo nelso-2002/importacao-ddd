@@ -66,11 +66,11 @@ public class ConsultaProcessos {
         return consulta.map(ConsultaProcessos::paraResumo).all();
     }
 
-    public Flux<ProcessoResumo> alteradosDepoisDe(OffsetDateTime instante) {
-        return db.sql(COLUNAS_RESUMO + "where atualizado_em > :instante order by atualizado_em")
-                .bind("instante", instante)
+    public Mono<ProcessoResumo> resumo(UUID id) {
+        return db.sql(COLUNAS_RESUMO + "where id = :id")
+                .bind("id", id)
                 .map(ConsultaProcessos::paraResumo)
-                .all();
+                .one();
     }
 
     public Mono<ProcessoDetalhe> buscar(UUID id) {

@@ -28,7 +28,7 @@ import static org.awaitility.Awaitility.await;
 
 /**
  * Caixa-preta: sobe o docker-compose.yml da raiz (Keycloak, os dois serviços, os dois Postgres, o Kafka e o nginx)
- * e usa o sistema só por HTTP, pelo mesmo endereço que o navegador usa, com tokens de verdade emitidos pelo Keycloak.
+ * e usa o sistema só por HTTP, pelos mesmos endereços que o navegador usa, com tokens de verdade emitidos pelo Keycloak.
  * Não conhece classe nenhuma dos serviços: se passar aqui, passa para o usuário.
  *
  * É o único teste em que assinatura, emissor e audiência dos tokens são conferidos de fato
@@ -42,6 +42,9 @@ class FluxoCompletoE2ETest {
     // projeto próprio: containers e volumes separados do "docker compose up" do dia a dia
     private static final String PROJETO = "importacao-e2e";
     private static final String WEB = "http://localhost:4200";
+    // sem proxy: o navegador (e este teste) chama cada serviço direto; o CORS é que libera a tela
+    private static final String PROCESSOS = "http://localhost:8080";
+    private static final String CONSULTAS = "http://localhost:8081";
     private static final String KEYCLOAK_TOKEN = "http://localhost:8180/realms/importacao/protocol/openid-connect/token";
 
     private static final HttpClient http = HttpClient.newHttpClient();
@@ -55,7 +58,7 @@ class FluxoCompletoE2ETest {
         // --wait espera os healthchecks (Keycloak, bancos, Kafka e os dois serviços) ficarem saudáveis
         compose("up", "-d", "--build", "--wait", "--wait-timeout", "300");
         // o web não tem healthcheck: espera o nginx responder
-        await().atMost(Duration.ofSeconds(60)).ignoreExceptions().until(() -> get("/", null).statusCode() == 200);
+        await().atMost(Duration.ofSeconds(60)).ignoreExceptions().until(() -> get(WEB + "/", null).statusCode() == 200);
         operador = token("operador", "operador");
         consulta = token("consulta", "consulta");
     }
@@ -76,24 +79,24 @@ class FluxoCompletoE2ETest {
     void comandoChegaAoEventStoreEPeloKafkaAProjecao() throws Exception {
         var referencia = "E2E-" + UUID.randomUUID().toString().substring(0, 8);
 
-        var aberto = post("/api/processos", operador, """
+        var aberto = post(PROCESSOS + "/processos", operador, """
                 {"importador": "11222333000181", "referencia": "%s"}
                 """.formatted(referencia));
         assertThat(aberto.statusCode()).isEqualTo(201);
         var id = json.readTree(aberto.body()).get("id").asString();
 
-        var item = post("/api/processos/" + id + "/itens", operador, """
+        var item = post(PROCESSOS + "/processos/" + id + "/itens", operador, """
                 {"ncm": "90308410", "quantidade": 3, "valor": 4500.75, "moeda": "EUR"}
                 """);
         assertThat(item.statusCode()).isEqualTo(201);
 
         // event_store (processo-service): síncrono, já está lá quando o POST responde
-        var historico = json.readTree(get("/api/processos/" + id + "/historico", consulta).body());
+        var historico = json.readTree(get(PROCESSOS + "/processos/" + id + "/historico", consulta).body());
         assertThat(tipos(historico)).containsExactly("ProcessoAberto", "ItemAdicionado");
 
         // projeção (consulta-service): só chega pelo caminho outbox → Kafka → consumidor, que é assíncrono
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
-            var resposta = get("/api/consultas/processos/" + id, consulta);
+            var resposta = get(CONSULTAS + "/consultas/processos/" + id, consulta);
             assertThat(resposta.statusCode()).isEqualTo(200);
             var detalhe = json.readTree(resposta.body());
             assertThat(detalhe.get("referencia").asString()).isEqualTo(referencia);
@@ -103,7 +106,7 @@ class FluxoCompletoE2ETest {
     }
 
     @Test
-    void streamSseAvisaDaMudancaPeloNginx() throws Exception {
+    void streamSseAvisaDaMudanca() throws Exception {
         var referencia = "E2E-SSE-" + UUID.randomUUID().toString().substring(0, 8);
         var linhas = new CopyOnWriteArrayList<String>();
 
@@ -111,7 +114,7 @@ class FluxoCompletoE2ETest {
         // em andamento terminarem, e um stream SSE nunca termina. O shutdownNow() corta a conexão na hora.
         var cliente = HttpClient.newHttpClient();
         try {
-            var stream = HttpRequest.newBuilder(URI.create(WEB + "/api/consultas/processos/stream"))
+            var stream = HttpRequest.newBuilder(URI.create(CONSULTAS + "/consultas/processos/stream"))
                     .header("Authorization", "Bearer " + consulta)
                     .build();
             cliente.sendAsync(stream, HttpResponse.BodyHandlers.ofLines())
@@ -119,7 +122,7 @@ class FluxoCompletoE2ETest {
             // o keep-alive sai na hora: garante que o stream está aberto antes de provocar a mudança
             await().atMost(Duration.ofSeconds(10)).until(() -> linhas.contains(":keep-alive"));
 
-            post("/api/processos", operador, """
+            post(PROCESSOS + "/processos", operador, """
                     {"importador": "12ABC34501DE35", "referencia": "%s"}
                     """.formatted(referencia));
 
@@ -135,14 +138,14 @@ class FluxoCompletoE2ETest {
 
     @Test
     void semTokenNenhumServicoResponde() throws Exception {
-        assertThat(post("/api/processos", null, "{}").statusCode()).isEqualTo(401);
-        assertThat(get("/api/consultas/processos", null).statusCode()).isEqualTo(401);
+        assertThat(post(PROCESSOS + "/processos", null, "{}").statusCode()).isEqualTo(401);
+        assertThat(get(CONSULTAS + "/consultas/processos", null).statusCode()).isEqualTo(401);
     }
 
     @Test
     void consultaLeMasNaoEscreve() throws Exception {
-        assertThat(get("/api/consultas/processos", consulta).statusCode()).isEqualTo(200);
-        assertThat(post("/api/processos", consulta, """
+        assertThat(get(CONSULTAS + "/consultas/processos", consulta).statusCode()).isEqualTo(200);
+        assertThat(post(PROCESSOS + "/processos", consulta, """
                 {"importador": "11222333000181", "referencia": "E2E-PROIBIDO"}
                 """).statusCode()).isEqualTo(403);
     }
@@ -153,9 +156,31 @@ class FluxoCompletoE2ETest {
         var partes = operador.split("\\.");
         var adulterado = partes[0] + "." + partes[1] + "." + new StringBuilder(partes[2]).reverse();
 
-        assertThat(post("/api/processos", adulterado, """
+        assertThat(post(PROCESSOS + "/processos", adulterado, """
                 {"importador": "11222333000181", "referencia": "E2E-ADULTERADO"}
                 """).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void corsLiberaATelaERecusaOutroSite() throws Exception {
+        assertThat(preflight(PROCESSOS + "/processos", "POST", "http://localhost:4200").statusCode()).isEqualTo(200);
+        assertThat(preflight(PROCESSOS + "/processos", "POST", "http://localhost:4200").headers()
+                .firstValue("Access-Control-Allow-Origin")).hasValue("http://localhost:4200");
+        assertThat(preflight(CONSULTAS + "/consultas/processos/stream", "GET", "http://localhost:4200").statusCode()).isEqualTo(200);
+
+        assertThat(preflight(PROCESSOS + "/processos", "POST", "http://site-malicioso.test").statusCode()).isEqualTo(403);
+        assertThat(preflight(CONSULTAS + "/consultas/processos", "GET", "http://site-malicioso.test").statusCode()).isEqualTo(403);
+    }
+
+    /** O que o navegador pergunta antes de uma chamada com Authorization para outra origem. */
+    private static HttpResponse<String> preflight(String url, String metodo, String origem) throws IOException, InterruptedException {
+        var requisicao = HttpRequest.newBuilder(URI.create(url))
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .header("Origin", origem)
+                .header("Access-Control-Request-Method", metodo)
+                .header("Access-Control-Request-Headers", "authorization")
+                .build();
+        return http.send(requisicao, HttpResponse.BodyHandlers.ofString());
     }
 
     /** Login direto com usuário e senha (cliente importacao-cli), só para testes: o navegador usa o fluxo com PKCE. */
@@ -181,20 +206,20 @@ class FluxoCompletoE2ETest {
         return historico.valueStream().map(evento -> evento.get("tipo").asString()).toList();
     }
 
-    private static HttpResponse<String> get(String caminho, String token) throws IOException, InterruptedException {
-        return http.send(requisicao(caminho, token).GET().build(), HttpResponse.BodyHandlers.ofString());
+    private static HttpResponse<String> get(String url, String token) throws IOException, InterruptedException {
+        return http.send(requisicao(url, token).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private static HttpResponse<String> post(String caminho, String token, String corpo) throws IOException, InterruptedException {
-        var requisicao = requisicao(caminho, token)
+    private static HttpResponse<String> post(String url, String token, String corpo) throws IOException, InterruptedException {
+        var requisicao = requisicao(url, token)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(corpo))
                 .build();
         return http.send(requisicao, HttpResponse.BodyHandlers.ofString());
     }
 
-    private static HttpRequest.Builder requisicao(String caminho, String token) {
-        var requisicao = HttpRequest.newBuilder(URI.create(WEB + caminho));
+    private static HttpRequest.Builder requisicao(String url, String token) {
+        var requisicao = HttpRequest.newBuilder(URI.create(url));
         return token == null ? requisicao : requisicao.header("Authorization", "Bearer " + token);
     }
 

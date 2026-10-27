@@ -28,3 +28,8 @@ spring:
         max.block.ms: 5000
         request.timeout.ms: 5000
         delivery.timeout.ms: 10000
+
+seguranca:
+  cors:
+    # a tela Angular (ng serve em desenvolvimento, nginx no docker-compose); em outro ambiente, outra lista
+    origens: http://localhost:4200

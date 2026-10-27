@@ -1,5 +1,11 @@
 <header class="topo">
   <a routerLink="/" class="marca">Processos de importação</a>
+  @if (autenticacao.logado()) {
+    <span class="usuario">
+      {{ autenticacao.nome() }}
+      <button type="button" class="secundario" (click)="autenticacao.sair()">Sair</button>
+    </span>
+  }
 </header>
 
 <main>

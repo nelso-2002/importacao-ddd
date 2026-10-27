@@ -101,6 +101,32 @@ class ProcessoControllerTest {
         verifyNoInteractions(adicionarItem);
     }
 
+    // CORS: antes de um POST com Authorization, o navegador pergunta (preflight OPTIONS, sem token) se pode.
+
+    @Test
+    void preflightDaTelaEAutorizado() {
+        var resposta = mvc.options().uri("/processos")
+                .header("Origin", "http://localhost:4200")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "authorization,content-type")
+                .exchange();
+
+        assertThat(resposta).hasStatus(HttpStatus.OK);
+        assertThat(resposta.getResponse().getHeader("Access-Control-Allow-Origin")).isEqualTo("http://localhost:4200");
+        assertThat(resposta.getResponse().getHeader("Access-Control-Allow-Methods")).contains("POST");
+    }
+
+    @Test
+    void preflightDeOutroSiteERecusado() {
+        var resposta = mvc.options().uri("/processos")
+                .header("Origin", "http://site-malicioso.test")
+                .header("Access-Control-Request-Method", "POST")
+                .exchange();
+
+        assertThat(resposta).hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(resposta.getResponse().getHeader("Access-Control-Allow-Origin")).isNull();
+    }
+
     @Test
     void abreProcessoComOsValueObjectsConvertidosNaBorda() {
         given(abrirProcesso.executar(any())).willReturn(ID);

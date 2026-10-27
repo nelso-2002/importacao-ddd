@@ -43,7 +43,7 @@
     </table>
 
     <!-- o domínio só aceita itens enquanto o processo está ABERTO; nos outros status nem oferecemos -->
-    @if (processo.status === 'ABERTO') {
+    @if (processo.status === 'ABERTO' && autenticacao.ehOperador()) {
       <app-form-item [processoId]="processo.id" (adicionado)="recarregar.next()" />
     }
   </section>
@@ -54,7 +54,12 @@
       @for (evento of historico(); track evento.versao) {
         @let descricao = descrever(evento);
         <li>
-          <time>{{ evento.ocorridoEm | date: 'dd/MM/yyyy HH:mm:ss' }}</time>
+          <time>
+            {{ evento.ocorridoEm | date: 'dd/MM/yyyy HH:mm:ss' }}
+            @if (evento.usuario) {
+              · {{ evento.usuario }}
+            }
+          </time>
           <strong>{{ descricao.titulo }}</strong>
           @if (descricao.detalhe) {
             <span>{{ descricao.detalhe }}</span>

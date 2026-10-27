@@ -10,6 +10,7 @@ import { Component, computed, inject, input, LOCALE_ID } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { catchError, filter, forkJoin, map, merge, Observable, of, Subject, switchMap } from 'rxjs';
+import { Autenticacao } from '../autenticacao/autenticacao';
 import { FormItem } from './form-item';
 import {
   EventoHistorico,
@@ -33,6 +34,7 @@ interface Carregado {
 export class PaginaProcesso {
   private readonly api = inject(ProcessosApi);
   private readonly locale = inject(LOCALE_ID);
+  protected readonly autenticacao = inject(Autenticacao);
 
   // Preenchido pelo roteador a partir de /processos/:id (withComponentInputBinding).
   readonly id = input.required<string>();

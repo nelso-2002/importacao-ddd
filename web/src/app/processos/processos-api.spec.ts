@@ -1,7 +1,7 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { mensagemDeErro, ProcessoResumo, ProcessosApi } from './processos-api';
+import { mensagemDeErro, ProcessoResumo, ProcessosApi, separarEventosSse } from './processos-api';
 
 // HttpTestingController: o HttpClient de verdade, mas nenhuma requisição sai para a rede.
 // O teste diz qual requisição espera, confere método/URL/corpo e responde com flush().
@@ -35,7 +35,7 @@ describe('ProcessosApi', () => {
 
     api.listar({ busca: '  0101 ', status: '' }).subscribe((resposta) => (recebido = resposta));
 
-    const requisicao = http.expectOne((r) => r.url === '/api/consultas/processos');
+    const requisicao = http.expectOne((r) => r.url === 'http://localhost:8081/consultas/processos');
     expect(requisicao.request.method).toBe('GET');
     expect(requisicao.request.params.get('busca')).toBe('0101');
     expect(requisicao.request.params.has('status')).toBe(false);
@@ -46,7 +46,7 @@ describe('ProcessosApi', () => {
   it('manda o status quando escolhido', () => {
     api.listar({ busca: '', status: 'CANCELADO' }).subscribe();
 
-    const requisicao = http.expectOne((r) => r.url === '/api/consultas/processos');
+    const requisicao = http.expectOne((r) => r.url === 'http://localhost:8081/consultas/processos');
     expect(requisicao.request.params.get('status')).toBe('CANCELADO');
     expect(requisicao.request.params.has('busca')).toBe(false);
     requisicao.flush([]);
@@ -56,8 +56,8 @@ describe('ProcessosApi', () => {
     api.detalhe('p1').subscribe();
     api.historico('p1').subscribe();
 
-    http.expectOne('/api/consultas/processos/p1').flush({});
-    http.expectOne('/api/processos/p1/historico').flush([]);
+    http.expectOne('http://localhost:8081/consultas/processos/p1').flush({});
+    http.expectOne('http://localhost:8080/processos/p1/historico').flush([]);
   });
 
   it('abre processo com POST e devolve o id', () => {
@@ -65,7 +65,7 @@ describe('ProcessosApi', () => {
 
     api.abrir({ importador: '11222333000181', referencia: 'IMP-1' }).subscribe((r) => (id = r.id));
 
-    const requisicao = http.expectOne('/api/processos');
+    const requisicao = http.expectOne('http://localhost:8080/processos');
     expect(requisicao.request.method).toBe('POST');
     expect(requisicao.request.body).toEqual({ importador: '11222333000181', referencia: 'IMP-1' });
     requisicao.flush({ id: 'novo' }, { status: 201, statusText: 'Created' });
@@ -80,7 +80,7 @@ describe('ProcessosApi', () => {
     });
 
     http
-      .expectOne('/api/processos/p1/itens')
+      .expectOne('http://localhost:8080/processos/p1/itens')
       .flush(
         { title: 'Regra de negócio violada', detail: 'Processo CANCELADO' },
         { status: 409, statusText: 'Conflict' },
@@ -107,5 +107,30 @@ describe('mensagemDeErro', () => {
 
   it('tem uma mensagem genérica quando o servidor nem respondeu', () => {
     expect(mensagemDeErro(erro(null, 0))).toContain('Os serviços estão no ar?');
+  });
+});
+
+describe('separarEventosSse', () => {
+  it('separa eventos completos e ignora o keep-alive', () => {
+    const { eventos, resto } = separarEventosSse(
+      ':keep-alive\n\nid:p1\nevent:processo\ndata:{"id":"p1"}\n\n',
+    );
+
+    expect(eventos).toEqual([{ tipo: 'processo', dados: '{"id":"p1"}' }]);
+    expect(resto).toBe('');
+  });
+
+  it('guarda o evento partido entre dois pedaços da resposta até ele terminar', () => {
+    const primeiro = separarEventosSse('event:processo\ndata:{"id":');
+    expect(primeiro.eventos).toEqual([]);
+
+    const segundo = separarEventosSse(primeiro.resto + '"p2"}\n\n');
+    expect(segundo.eventos).toEqual([{ tipo: 'processo', dados: '{"id":"p2"}' }]);
+  });
+
+  it('aceita fim de linha \\r\\n', () => {
+    expect(separarEventosSse('event:processo\r\ndata:{}\r\n\r\n').eventos).toEqual([
+      { tipo: 'processo', dados: '{}' },
+    ]);
   });
 });

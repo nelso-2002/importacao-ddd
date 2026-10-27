@@ -4,6 +4,16 @@ spring:
   threads:
     virtual:
       enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # quem emitiu: o iss do token tem de ser exatamente este (o Keycloak sempre assina como localhost:8180)
+          issuer-uri: http://localhost:8180/realms/importacao
+          # onde buscar as chaves públicas para conferir a assinatura (no Docker, o endereço interno: ver docker-compose.yml)
+          jwk-set-uri: http://localhost:8180/realms/importacao/protocol/openid-connect/certs
+          # para quem: o token tem de ter sido emitido para esta API (escopo importacao-api do realm)
+          audiences: importacao-api
   kafka:
     producer:
       # chave e valor como texto: o valor é o JSON montado pelo PublicadorOutbox

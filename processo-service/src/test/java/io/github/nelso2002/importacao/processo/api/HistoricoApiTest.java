@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 
+import static io.github.nelso2002.importacao.processo.api.Tokens.operador;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Histórico de ponta a ponta: comandos pela API, leitura direto do event store. */
@@ -33,7 +34,7 @@ class HistoricoApiTest {
     private TransactionTemplate transacao;
 
     private String abrirProcesso(String referencia) {
-        var resposta = mvc.post().uri("/processos").contentType(MediaType.APPLICATION_JSON)
+        var resposta = mvc.post().with(operador()).uri("/processos").contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"importador": "11222333000181", "referencia": "%s"}
                         """.formatted(referencia))
@@ -45,7 +46,7 @@ class HistoricoApiTest {
     @Test
     void historicoDevolveOsEventosEmOrdem() {
         var id = abrirProcesso("IMP-HISTORICO");
-        assertThat(mvc.post().uri("/processos/{id}/itens", id).contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.post().with(operador()).uri("/processos/{id}/itens", id).contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"ncm": "90308410", "quantidade": 1, "valor": 10, "moeda": "USD"}
                         """))
@@ -57,7 +58,7 @@ class HistoricoApiTest {
             repositorio.salvar(processo);
         });
 
-        var resposta = mvc.get().uri("/processos/{id}/historico", id).exchange();
+        var resposta = mvc.get().with(operador()).uri("/processos/{id}/historico", id).exchange();
 
         assertThat(resposta).hasStatus(HttpStatus.OK);
         assertThat(resposta).bodyJson().extractingPath("$[*].tipo")
@@ -68,19 +69,32 @@ class HistoricoApiTest {
     }
 
     @Test
+    void papelConsultaPodeLerOHistorico() {
+        var id = abrirProcesso("IMP-SO-LEITURA");
+
+        assertThat(mvc.get().with(Tokens.consulta()).uri("/processos/{id}/historico", id).exchange())
+                .hasStatus(HttpStatus.OK);
+    }
+
+    @Test
+    void healthcheckDoDockerNaoPrecisaDeToken() {
+        assertThat(mvc.get().uri("/actuator/health").exchange()).hasStatus(HttpStatus.OK);
+    }
+
+    @Test
     void processoInexistenteDevolve404() {
-        assertThat(mvc.get().uri("/processos/{id}/historico", ProcessoId.novo().valor()).exchange())
+        assertThat(mvc.get().with(operador()).uri("/processos/{id}/historico", ProcessoId.novo().valor()).exchange())
                 .hasStatus(HttpStatus.NOT_FOUND);
     }
 
     @Test
     void idMalformadoDevolve400() {
-        assertThat(mvc.get().uri("/processos/{id}/historico", "abc").exchange()).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(mvc.get().with(operador()).uri("/processos/{id}/historico", "abc").exchange()).hasStatus(HttpStatus.BAD_REQUEST);
     }
 
     @Test
     void listaEDetalheNaoSaoMaisDesteServico() {
         // agora em GET /consultas/processos, no consulta-service
-        assertThat(mvc.get().uri("/processos").exchange()).hasStatus(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(mvc.get().with(operador()).uri("/processos").exchange()).hasStatus(HttpStatus.METHOD_NOT_ALLOWED);
     }
 }

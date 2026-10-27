@@ -13,14 +13,18 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 import java.math.BigDecimal;
 
+import static io.github.nelso2002.importacao.processo.api.Tokens.consulta;
+import static io.github.nelso2002.importacao.processo.api.Tokens.operador;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -34,6 +38,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
  * Os testes de ponta a ponta (ProcessoApiTest, HistoricoApiTest) continuam cobrindo a integração real.
  */
 @WebMvcTest(ProcessoController.class)
+@Import(SegurancaConfig.class)
 class ProcessoControllerTest {
 
     private static final ProcessoId ID = ProcessoId.de("123e4567-e89b-12d3-a456-426614174000");
@@ -47,8 +52,53 @@ class ProcessoControllerTest {
     @MockitoBean
     private AdicionarItem adicionarItem;
 
+    // nunca é chamado (o jwt() dos testes já entrega o token decodificado), mas a cadeia de segurança precisa dele
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
+
     private MockMvcTester.MockMvcRequestBuilder post(String uri, String json) {
-        return mvc.post().uri(uri).contentType(MediaType.APPLICATION_JSON).content(json);
+        return mvc.post().with(operador()).uri(uri).contentType(MediaType.APPLICATION_JSON).content(json);
+    }
+
+    // Segurança: quem não tem token não entra; quem tem o papel errado entra, mas não pode.
+
+    @Test
+    void semTokenDevolve401SemChamarOCasoDeUso() {
+        var resposta = mvc.post().uri("/processos").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"importador": "11222333000181", "referencia": "IMP-1"}
+                        """)
+                .exchange();
+
+        assertThat(resposta).hasStatus(HttpStatus.UNAUTHORIZED);
+        assertThat(resposta.getResponse().getHeader("WWW-Authenticate")).startsWith("Bearer");
+        verifyNoInteractions(abrirProcesso);
+    }
+
+    @Test
+    void papelConsultaNaoPodeEnviarComandos() {
+        var resposta = mvc.post().with(consulta()).uri("/processos").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"importador": "11222333000181", "referencia": "IMP-1"}
+                        """)
+                .exchange();
+
+        assertThat(resposta).hasStatus(HttpStatus.FORBIDDEN);
+        verifyNoInteractions(abrirProcesso);
+    }
+
+    @Test
+    void tokenSemPapeisDoKeycloakNaoPodeEnviarComandos() {
+        // autenticado, mas sem realm_access.roles: a conversão não dá papel nenhum
+        var resposta = mvc.post().with(Tokens.usuario("sem-papel")).uri("/processos/" + ID.valor() + "/itens")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"ncm": "90308410", "quantidade": 1, "valor": 10, "moeda": "USD"}
+                        """)
+                .exchange();
+
+        assertThat(resposta).hasStatus(HttpStatus.FORBIDDEN);
+        verifyNoInteractions(adicionarItem);
     }
 
     @Test

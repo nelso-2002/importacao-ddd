@@ -13,3 +13,15 @@ services:
     ports:
       # porta fixa: o broker anuncia localhost:9092 aos clientes, então o lado de fora tem de ser o mesmo
       - '9092:9092'
+  keycloak:
+    # login e emissão de tokens; o consulta-service em desenvolvimento usa este mesmo Keycloak
+    image: 'quay.io/keycloak/keycloak:26.8.0'
+    command: 'start-dev --import-realm'
+    environment:
+      - 'KC_BOOTSTRAP_ADMIN_USERNAME=admin'
+      - 'KC_BOOTSTRAP_ADMIN_PASSWORD=admin'
+      - 'KC_HOSTNAME=http://localhost:8180'
+    ports:
+      - '8180:8080'
+    volumes:
+      - '../keycloak/realm-importacao.json:/opt/keycloak/data/import/realm-importacao.json:ro'

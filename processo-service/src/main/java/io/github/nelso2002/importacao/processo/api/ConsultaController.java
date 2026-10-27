@@ -4,6 +4,7 @@ import io.github.nelso2002.importacao.processo.application.ProcessoNaoEncontrado
 import io.github.nelso2002.importacao.processo.consulta.ConsultaProcessos;
 import io.github.nelso2002.importacao.processo.consulta.ConsultaProcessos.EventoHistorico;
 import io.github.nelso2002.importacao.processo.domain.ProcessoId;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +23,7 @@ class ConsultaController {
         this.consultas = consultas;
     }
 
+    @PreAuthorize("hasAnyRole('OPERADOR', 'CONSULTA')")
     @GetMapping("/{id}/historico")
     List<EventoHistorico> historico(@PathVariable String id) {
         var processoId = ProcessoId.de(id);

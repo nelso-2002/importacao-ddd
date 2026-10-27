@@ -62,24 +62,6 @@ public class ProcessoImportacao {
         return processo;
     }
 
-    /**
-     * Recria a partir do estado gravado pela persistência da Etapa 1 (tabelas processo/item_processo).
-     * Sai junto com o adaptador JPA, quando o event store o substituir.
-     */
-    public static ProcessoImportacao reconstituir(ProcessoId id, Cnpj importador, String referencia,
-                                                  StatusProcesso status, List<ItemProcesso> itens,
-                                                  int ultimoNumeroItem, String motivoCancelamento) {
-        var processo = new ProcessoImportacao();
-        processo.id = id;
-        processo.importador = importador;
-        processo.referencia = referencia;
-        processo.status = status;
-        processo.itens.addAll(itens);
-        processo.ultimoNumeroItem = ultimoNumeroItem;
-        processo.motivoCancelamento = motivoCancelamento;
-        return processo;
-    }
-
     public ItemProcesso adicionarItem(Ncm ncm, BigDecimal quantidade, Dinheiro valorTotal) {
         exigirAberto("adicionar item");
         // cria (e valida) antes de registrar: item inválido não vira evento nem consome número
@@ -184,11 +166,6 @@ public class ProcessoImportacao {
 
     public String motivoCancelamento() {
         return motivoCancelamento;
-    }
-
-    /** Usado pela persistência da Etapa 1; no event store o contador é derivado dos eventos. */
-    public int ultimoNumeroItem() {
-        return ultimoNumeroItem;
     }
 
     /** Número de eventos aplicados até agora, incluindo os ainda não retirados. */

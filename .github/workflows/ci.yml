@@ -1,0 +1,91 @@
+name: CI
+
+# Todo push, em qualquer branch: o PR mostra o resultado do commit mais recente da branch.
+on:
+  push:
+  workflow_dispatch:
+
+# Um push novo na mesma branch cancela a execução anterior, que já ficou velha.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Menor privilégio: o workflow só lê o repositório.
+permissions:
+  contents: read
+
+# Actions fixadas pelo SHA do commit (a tag pode ser movida para outro código; o SHA não).
+# O comentário diz a versão, para quem for atualizar.
+
+jobs:
+  backend:
+    name: ${{ matrix.servico }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # um serviço quebrado não esconde o resultado do outro
+      fail-fast: false
+      matrix:
+        servico: [processo-service, consulta-service]
+    defaults:
+      run:
+        working-directory: ${{ matrix.servico }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: ${{ matrix.servico }}/pom.xml
+      # verify = compilar + testes de unidade e de integração; o Docker do runner atende o Testcontainers
+      - run: ./mvnw -B verify
+      - name: Relatórios dos testes
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: surefire-${{ matrix.servico }}
+          path: ${{ matrix.servico }}/target/surefire-reports/
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx ng test --watch=false
+      # o build de produção pega erros que o teste não pega (templates, orçamento de tamanho)
+      - run: npx ng build
+
+  # O mais lento e o mais caro: só roda se os outros passaram.
+  e2e:
+    needs: [backend, web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: e2e/pom.xml
+      # o teste sobe o docker-compose.yml da raiz (build das imagens incluído) e o derruba no fim
+      - run: ./mvnw -B test
+      - name: Relatórios dos testes
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: surefire-e2e
+          path: e2e/target/surefire-reports/

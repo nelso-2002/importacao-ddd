@@ -1,5 +1,7 @@
 # Processos de Importação — DDD, Event Sourcing, CQRS e Kafka
 
+[![CI](https://github.com/nelso-2002/importacao-ddd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/nelso-2002/importacao-ddd/actions/workflows/ci.yml)
+
 Projeto de estudo: um sistema de processos de importação construído em etapas, com Java 25, Spring Boot 4, Angular 22, Postgres e Kafka.
 
 ## Como rodar
@@ -62,7 +64,10 @@ Testes (precisam de Docker, por causa do Testcontainers):
 (cd processo-service && ./mvnw test)
 (cd consulta-service && ./mvnw test)
 (cd web && npx ng test --watch=false)
+(cd e2e && ./mvnw test)                  # sobe o docker-compose da raiz e testa o fluxo completo
 ```
+
+A CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda tudo isso a cada push.
 
 ## Etapas
 
@@ -71,4 +76,5 @@ Testes (precisam de Docker, por causa do Testcontainers):
 | 1 | Domínio DDD, casos de uso, JPA e API REST | [#1](https://github.com/nelso-2002/importacao-ddd/pull/1) |
 | 2 | Event Sourcing e CQRS | [#2](https://github.com/nelso-2002/importacao-ddd/pull/2) |
 | 3 | `consulta-service` reativo e front-end Angular | [#3](https://github.com/nelso-2002/importacao-ddd/pull/3) |
-| 4 | Outbox, Kafka, banco por serviço e Docker Compose | — |
+| 4 | Outbox, Kafka, banco por serviço e Docker Compose | [#4](https://github.com/nelso-2002/importacao-ddd/pull/4) |
+| 5 | Testes de ponta a ponta, CI e segurança (Keycloak/JWT) | em andamento |

@@ -1,0 +1,10 @@
+services:
+  # banco só do consulta-service (database per service); o Kafka vem do compose do processo-service
+  postgres:
+    image: 'postgres:17'
+    environment:
+      - 'POSTGRES_DB=consulta'
+      - 'POSTGRES_PASSWORD=secret'
+      - 'POSTGRES_USER=consulta'
+    ports:
+      - '5432'

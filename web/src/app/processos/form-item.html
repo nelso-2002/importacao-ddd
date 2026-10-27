@@ -1,0 +1,46 @@
+<form class="formulario em-linha" [formGroup]="form" (ngSubmit)="enviar()">
+  <label class="campo">
+    <span>NCM</span>
+    <input formControlName="ncm" placeholder="9030.84.10" />
+    @if (form.controls.ncm.touched && form.controls.ncm.invalid) {
+      <small class="erro-campo">
+        {{ form.controls.ncm.hasError('required') ? 'Informe o NCM.' : 'NCM tem 8 dígitos.' }}
+      </small>
+    }
+  </label>
+
+  <label class="campo">
+    <span>Quantidade</span>
+    <input type="number" step="any" formControlName="quantidade" />
+    @if (form.controls.quantidade.touched && form.controls.quantidade.invalid) {
+      <small class="erro-campo">Maior que zero.</small>
+    }
+  </label>
+
+  <label class="campo">
+    <span>Valor total</span>
+    <input type="number" step="any" formControlName="valor" />
+    @if (form.controls.valor.touched && form.controls.valor.invalid) {
+      <small class="erro-campo">Zero ou mais.</small>
+    }
+  </label>
+
+  <label class="campo">
+    <span>Moeda</span>
+    <select formControlName="moeda">
+      @for (moeda of moedas; track moeda) {
+        <option [value]="moeda">{{ moeda }}</option>
+      }
+    </select>
+  </label>
+
+  <div class="acoes">
+    <button type="submit" [disabled]="enviando()">
+      {{ enviando() ? 'Adicionando…' : 'Adicionar item' }}
+    </button>
+  </div>
+</form>
+
+@if (erro(); as mensagem) {
+  <p class="aviso erro">{{ mensagem }}</p>
+}

@@ -7,3 +7,23 @@
     flex: 1;
   }
 }
+
+.titulo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+// linha que acabou de mudar ao vivo: pisca e volta ao normal
+tr.destacado td {
+  animation: destaque 3s ease-out;
+}
+
+@keyframes destaque {
+  from {
+    background: color-mix(in srgb, var(--destaque) 25%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}

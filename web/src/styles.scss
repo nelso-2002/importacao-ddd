@@ -103,3 +103,64 @@ table {
   &[data-status='DESEMBARACADO'] { --cor-status: #1a7f37; }
   &[data-status='CANCELADO'] { --cor-status: #b42318; }
 }
+
+button,
+.botao {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--destaque);
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.voltar {
+  display: inline-block;
+  margin-bottom: 1rem;
+}
+
+.formulario {
+  display: grid;
+  gap: 1rem;
+  max-width: 28rem;
+
+  // formulário de item: campos lado a lado
+  &.em-linha {
+    max-width: none;
+    margin-top: 1rem;
+    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+    align-items: start;
+  }
+
+  .acoes {
+    align-self: end;
+  }
+}
+
+.campo {
+  display: grid;
+  gap: 0.25rem;
+
+  span {
+    font-size: 0.85rem;
+    color: var(--texto-suave);
+  }
+
+  input,
+  select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+.erro-campo {
+  color: var(--erro);
+}

@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -59,6 +59,18 @@ export interface FiltroProcessos {
   status: Status | '';
 }
 
+export interface NovoProcesso {
+  importador: string;
+  referencia: string;
+}
+
+export interface NovoItem {
+  ncm: string;
+  quantidade: number;
+  valor: number;
+  moeda: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ProcessosApi {
   private readonly http = inject(HttpClient);
@@ -81,6 +93,40 @@ export class ProcessosApi {
   historico(id: string): Observable<EventoHistorico[]> {
     return this.http.get<EventoHistorico[]>(`/api/processos/${id}/historico`);
   }
+
+  abrir(processo: NovoProcesso): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>('/api/processos', processo);
+  }
+
+  adicionarItem(processoId: string, item: NovoItem): Observable<ItemResumo> {
+    return this.http.post<ItemResumo>(`/api/processos/${processoId}/itens`, item);
+  }
+
+  /**
+   * Stream SSE do consulta-service como Observable: cada evento "processo" vira um next().
+   * Nada acontece até alguém assinar, e o unsubscribe fecha a conexão (teardown).
+   * Erros de rede não encerram o Observable: o próprio EventSource reconecta sozinho.
+   */
+  mudancas(): Observable<ProcessoResumo> {
+    return new Observable<ProcessoResumo>((assinante) => {
+      const fonte = new EventSource('/api/consultas/processos/stream');
+      fonte.addEventListener('processo', (evento) =>
+        assinante.next(JSON.parse((evento as MessageEvent<string>).data)),
+      );
+      return () => fonte.close();
+    });
+  }
+}
+
+/** Mensagem legível a partir do ProblemDetail que os serviços devolvem. */
+export function mensagemDeErro(erro: HttpErrorResponse): string {
+  const problema = erro.error as { detail?: string; erros?: Record<string, string> } | null;
+  if (problema?.erros) {
+    return Object.entries(problema.erros)
+      .map(([campo, mensagem]) => `${campo}: ${mensagem}`)
+      .join('; ');
+  }
+  return problema?.detail ?? 'Não foi possível concluir a operação. Os serviços estão no ar?';
 }
 
 export const ROTULOS_STATUS: Record<Status, string> = {

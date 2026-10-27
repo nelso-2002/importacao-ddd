@@ -41,6 +41,11 @@
         }
       </tbody>
     </table>
+
+    <!-- o domínio só aceita itens enquanto o processo está ABERTO; nos outros status nem oferecemos -->
+    @if (processo.status === 'ABERTO') {
+      <app-form-item [processoId]="processo.id" (adicionado)="recarregar.next()" />
+    }
   </section>
 
   <section>

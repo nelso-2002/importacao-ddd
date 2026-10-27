@@ -1,4 +1,7 @@
-<h2>Processos</h2>
+<div class="titulo">
+  <h2>Processos</h2>
+  <a routerLink="/processos/novo" class="botao">Novo processo</a>
+</div>
 
 <form class="filtros" [formGroup]="filtro">
   <input
@@ -32,7 +35,7 @@
     </thead>
     <tbody>
       @for (processo of processos(); track processo.id) {
-        <tr>
+        <tr [class.destacado]="destacados().has(processo.id)">
           <td><a [routerLink]="['/processos', processo.id]">{{ processo.referencia }}</a></td>
           <td class="mono">{{ processo.importador }}</td>
           <td>

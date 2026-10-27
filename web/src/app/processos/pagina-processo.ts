@@ -9,7 +9,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, LOCALE_ID } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { catchError, forkJoin, map, of, switchMap } from 'rxjs';
+import { catchError, filter, forkJoin, map, merge, Observable, of, Subject, switchMap } from 'rxjs';
+import { FormItem } from './form-item';
 import {
   EventoHistorico,
   ProcessoDetalhe,
@@ -25,7 +26,7 @@ interface Carregado {
 
 @Component({
   selector: 'app-pagina-processo',
-  imports: [RouterLink, DatePipe, DecimalPipe, CurrencyPipe],
+  imports: [RouterLink, DatePipe, DecimalPipe, CurrencyPipe, FormItem],
   templateUrl: './pagina-processo.html',
   styleUrl: './pagina-processo.scss',
 })
@@ -38,23 +39,20 @@ export class PaginaProcesso {
 
   protected readonly rotulos = ROTULOS_STATUS;
 
+  // Disparado pelo formulário de item: recarrega na hora, sem esperar o SSE.
+  protected readonly recarregar = new Subject<void>();
+
+  // Para cada id: carrega ao abrir, ao adicionar um item e quando o SSE avisa que este processo mudou
+  // (inclusive mudanças feitas em outra aba ou por outra pessoa).
   // Detalhe (consulta-service) e histórico (processo-service) em paralelo; forkJoin espera os dois.
   private readonly carregado = toSignal(
     toObservable(this.id).pipe(
       switchMap((id) =>
-        forkJoin({ processo: this.api.detalhe(id), historico: this.api.historico(id) }).pipe(
-          map(({ processo, historico }): Carregado => ({ processo, historico, erro: null })),
-          catchError((erro: HttpErrorResponse) =>
-            of<Carregado>({
-              processo: null,
-              historico: [],
-              erro:
-                erro.status === 404
-                  ? 'Processo não encontrado.'
-                  : 'Não foi possível carregar o processo.',
-            }),
-          ),
-        ),
+        merge(
+          of(undefined),
+          this.recarregar,
+          this.api.mudancas().pipe(filter((mudanca) => mudanca.id === id)),
+        ).pipe(switchMap(() => this.carregar(id))),
       ),
     ),
   );
@@ -63,6 +61,22 @@ export class PaginaProcesso {
   protected readonly erro = computed(() => this.carregado()?.erro ?? null);
   // mais recente primeiro, como numa linha do tempo
   protected readonly historico = computed(() => [...(this.carregado()?.historico ?? [])].reverse());
+
+  private carregar(id: string): Observable<Carregado> {
+    return forkJoin({ processo: this.api.detalhe(id), historico: this.api.historico(id) }).pipe(
+      map(({ processo, historico }): Carregado => ({ processo, historico, erro: null })),
+      catchError((erro: HttpErrorResponse) =>
+        of<Carregado>({
+          processo: null,
+          historico: [],
+          erro:
+            erro.status === 404
+              ? 'Processo não encontrado.'
+              : 'Não foi possível carregar o processo.',
+        }),
+      ),
+    );
+  }
 
   protected descrever(evento: EventoHistorico): { titulo: string; detalhe: string } {
     // Narrowing pelo "tipo": dentro de cada case o TypeScript sabe o formato de evento.dados.

@@ -1,9 +1,20 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { catchError, debounceTime, distinctUntilChanged, map, of, startWith, switchMap } from 'rxjs';
+import {
+  auditTime,
+  catchError,
+  combineLatest,
+  debounceTime,
+  distinctUntilChanged,
+  map,
+  of,
+  share,
+  startWith,
+  switchMap,
+} from 'rxjs';
 import { FiltroProcessos, ProcessosApi, ProcessoResumo, ROTULOS_STATUS, Status } from './processos-api';
 
 interface Resultado {
@@ -28,15 +39,23 @@ export class ListaProcessos {
     status: new FormControl<Status | ''>('', { nonNullable: true }),
   });
 
-  // Fluxo da busca: cada tecla vira um valor; espera 300 ms sem digitar, ignora valor repetido
-  // e troca a requisição em andamento pela nova (switchMap cancela a anterior).
+  // Fluxo da busca: cada tecla vira um valor; espera 300 ms sem digitar e ignora valor repetido.
+  private readonly filtroAtual$ = this.filtro.valueChanges.pipe(
+    debounceTime(300),
+    startWith(this.filtro.getRawValue()),
+    map((): FiltroProcessos => this.filtro.getRawValue()),
+    distinctUntilChanged((a, b) => a.busca === b.busca && a.status === b.status),
+  );
+
+  // Uma única conexão SSE compartilhada (share) entre a atualização da lista e o destaque das linhas.
+  private readonly mudancas$ = this.api.mudancas().pipe(share());
+
+  // Refaz a busca com o filtro atual quando o filtro muda ou quando chega uma mudança ao vivo.
+  // auditTime junta uma rajada de mudanças numa só busca; switchMap cancela a busca anterior.
+  // Buscar de novo, em vez de encaixar a mudança na lista, garante que filtro e ordem continuem certos.
   private readonly resultado = toSignal(
-    this.filtro.valueChanges.pipe(
-      debounceTime(300),
-      startWith(this.filtro.getRawValue()),
-      map((): FiltroProcessos => this.filtro.getRawValue()),
-      distinctUntilChanged((a, b) => a.busca === b.busca && a.status === b.status),
-      switchMap((filtro) =>
+    combineLatest([this.filtroAtual$, this.mudancas$.pipe(auditTime(300), startWith(null))]).pipe(
+      switchMap(([filtro]) =>
         this.api.listar(filtro).pipe(
           map((processos): Resultado => ({ processos, erro: false })),
           catchError(() => of<Resultado>({ processos: [], erro: true })),
@@ -49,4 +68,23 @@ export class ListaProcessos {
   protected readonly processos = computed(() => this.resultado()?.processos ?? []);
   protected readonly carregando = computed(() => this.resultado() === undefined);
   protected readonly erro = computed(() => this.resultado()?.erro ?? false);
+
+  // Linhas que acabaram de mudar ao vivo ficam destacadas por alguns segundos.
+  protected readonly destacados = signal<ReadonlySet<string>>(new Set());
+
+  constructor() {
+    // takeUntilDestroyed encerra a assinatura (e a conexão SSE) quando o componente sai da tela.
+    this.mudancas$.pipe(takeUntilDestroyed()).subscribe(({ id }) => {
+      this.destacados.update((ids) => new Set(ids).add(id));
+      setTimeout(
+        () =>
+          this.destacados.update((ids) => {
+            const restantes = new Set(ids);
+            restantes.delete(id);
+            return restantes;
+          }),
+        3000,
+      );
+    });
+  }
 }

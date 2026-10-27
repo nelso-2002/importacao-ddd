@@ -4,6 +4,7 @@ import io.github.nelso2002.importacao.processo.domain.ProcessoEvento;
 import io.github.nelso2002.importacao.processo.domain.ProcessoId;
 import io.github.nelso2002.importacao.processo.domain.ProcessoImportacao;
 import io.github.nelso2002.importacao.processo.domain.ProcessoRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -30,10 +31,12 @@ public class ProcessoRepositoryEventStore implements ProcessoRepository {
 
     private final JdbcClient jdbc;
     private final JsonMapper json;
+    private final ApplicationEventPublisher publicador;
 
-    public ProcessoRepositoryEventStore(JdbcClient jdbc, JsonMapper json) {
+    public ProcessoRepositoryEventStore(JdbcClient jdbc, JsonMapper json, ApplicationEventPublisher publicador) {
         this.jdbc = jdbc;
         this.json = json;
+        this.publicador = publicador;
     }
 
     @Override
@@ -52,6 +55,8 @@ public class ProcessoRepositoryEventStore implements ProcessoRepository {
             throw new OptimisticLockingFailureException(
                     "Processo " + processo.id().valor() + " foi alterado por outra gravação (versão " + versao + ")", e);
         }
+        // só depois de todos gravados: um conflito de versão não chega a atualizar as projeções
+        novos.forEach(publicador::publishEvent);
     }
 
     @Override

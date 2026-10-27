@@ -1,0 +1,10 @@
+{
+  "/api/processos": {
+    "target": "http://localhost:8080",
+    "pathRewrite": { "^/api": "" }
+  },
+  "/api/consultas": {
+    "target": "http://localhost:8081",
+    "pathRewrite": { "^/api": "" }
+  }
+}

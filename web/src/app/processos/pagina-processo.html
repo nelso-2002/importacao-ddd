@@ -1,0 +1,63 @@
+<a routerLink="/" class="voltar">← Processos</a>
+
+@if (erro(); as mensagem) {
+  <p class="aviso erro">{{ mensagem }}</p>
+} @else if (processo(); as processo) {
+  <header class="cabecalho">
+    <div>
+      <h2>{{ processo.referencia }}</h2>
+      <p class="mono">Importador {{ processo.importador }}</p>
+    </div>
+    <span class="status" [attr.data-status]="processo.status">{{ rotulos[processo.status] }}</span>
+  </header>
+
+  @if (processo.motivoCancelamento) {
+    <p class="aviso">Motivo do cancelamento: {{ processo.motivoCancelamento }}</p>
+  }
+
+  <section>
+    <h3>Itens</h3>
+    <table>
+      <thead>
+        <tr>
+          <th class="numero">Nº</th>
+          <th>NCM</th>
+          <th class="numero">Quantidade</th>
+          <th class="numero">Valor total</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of processo.itens; track item.numero) {
+          <tr>
+            <td class="numero">{{ item.numero }}</td>
+            <td class="mono">{{ item.ncm }}</td>
+            <td class="numero">{{ item.quantidade | number: '1.0-5' }}</td>
+            <td class="numero">{{ item.valor | currency: item.moeda }}</td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="4" class="vazio">Nenhum item.</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h3>Histórico</h3>
+    <ol class="linha-do-tempo">
+      @for (evento of historico(); track evento.versao) {
+        @let descricao = descrever(evento);
+        <li>
+          <time>{{ evento.ocorridoEm | date: 'dd/MM/yyyy HH:mm:ss' }}</time>
+          <strong>{{ descricao.titulo }}</strong>
+          @if (descricao.detalhe) {
+            <span>{{ descricao.detalhe }}</span>
+          }
+        </li>
+      }
+    </ol>
+  </section>
+} @else {
+  <p class="aviso">Carregando…</p>
+}

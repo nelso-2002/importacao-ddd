@@ -14,6 +14,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static io.github.nelso2002.importacao.processo.domain.StatusProcesso.ABERTO;
 import static io.github.nelso2002.importacao.processo.domain.StatusProcesso.CANCELADO;
@@ -373,6 +374,90 @@ class ProcessoImportacaoTest {
                     .isInstanceOf(RegraDeNegocioException.class);
 
             assertThat(processo.retirarEventos()).isEmpty();
+        }
+    }
+
+    @Nested
+    class Reconstituicao {
+
+        @Test
+        void reaplicaOHistoricoEChegaAoMesmoEstado() {
+            var original = ProcessoImportacao.abrir(IMPORTADOR, "IMP-1");
+            original.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+            original.adicionarItem(NCM, BigDecimal.TWO, CEM_DOLARES);
+            original.removerItem(1);
+            original.cancelar("desistência do importador");
+            var historico = original.retirarEventos();
+
+            var reconstituido = ProcessoImportacao.reconstituir(historico);
+
+            assertThat(reconstituido.id()).isEqualTo(original.id());
+            assertThat(reconstituido.importador()).isEqualTo(IMPORTADOR);
+            assertThat(reconstituido.referencia()).isEqualTo("IMP-1");
+            assertThat(reconstituido.status()).isEqualTo(CANCELADO);
+            assertThat(reconstituido.motivoCancelamento()).isEqualTo("desistência do importador");
+            assertThat(reconstituido.itens()).isEqualTo(original.itens());
+            assertThat(reconstituido.versao()).isEqualTo(5);
+        }
+
+        @Test
+        void reconstituirNaoGeraEventosNovos() {
+            var original = ProcessoImportacao.abrir(IMPORTADOR, "IMP-1");
+
+            var reconstituido = ProcessoImportacao.reconstituir(original.retirarEventos());
+
+            assertThat(reconstituido.retirarEventos()).isEmpty();
+        }
+
+        @Test
+        void numeroDeItemRemovidoNaoVoltaDepoisDeReconstituir() {
+            var original = ProcessoImportacao.abrir(IMPORTADOR, "IMP-1");
+            original.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+            original.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+            original.removerItem(2);
+            var reconstituido = ProcessoImportacao.reconstituir(original.retirarEventos());
+
+            var novo = reconstituido.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+
+            // o contador vem do ItemAdicionado(2), que continua no histórico mesmo depois da remoção
+            assertThat(novo.numero()).isEqualTo(3);
+        }
+
+        @Test
+        void regrasValemDepoisDeReconstituir() {
+            var original = ProcessoImportacao.abrir(IMPORTADOR, "IMP-1");
+            original.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+            original.registrarDeclaracao();
+            var reconstituido = ProcessoImportacao.reconstituir(original.retirarEventos());
+
+            assertThatThrownBy(() -> reconstituido.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES))
+                    .isInstanceOf(RegraDeNegocioException.class);
+        }
+
+        @Test
+        void versaoContaOsEventosGravadosEOsNovos() {
+            var original = ProcessoImportacao.abrir(IMPORTADOR, "IMP-1");
+            original.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+            assertThat(original.versao()).isEqualTo(2);
+            var reconstituido = ProcessoImportacao.reconstituir(original.retirarEventos());
+
+            reconstituido.adicionarItem(NCM, BigDecimal.ONE, CEM_DOLARES);
+
+            assertThat(reconstituido.versao()).isEqualTo(3);
+            assertThat(reconstituido.retirarEventos()).hasSize(1);
+        }
+
+        @Test
+        void rejeitaHistoricoQueNaoComecaComAbertura() {
+            var semAbertura = List.<ProcessoEvento>of(
+                    new ItemAdicionado(ProcessoId.novo(), new ItemProcesso(1, NCM, BigDecimal.ONE, CEM_DOLARES)));
+
+            assertThatThrownBy(() -> ProcessoImportacao.reconstituir(semAbertura))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Histórico inválido");
+            assertThatThrownBy(() -> ProcessoImportacao.reconstituir(List.of()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Histórico inválido");
         }
     }
 }

@@ -32,7 +32,7 @@ class CnpjTest {
             "112223330001810",     // longo (15)
             "11222333/00018",      // caractere fora de [0-9A-Z], com 14 posições
             "12abc34501de35",      // minúsculas: só a forma canônica (maiúsculas) é aceita
-            "11222333000A81",      // letra na posição de dígito verificador
+            "112223330001A1",      // letra na posição de dígito verificador (13ª)
             "11.222.333/0001-81"   // com máscara: rejeitada, mesma decisão do Ncm
     })
     void rejeitaFormatoInvalido(String entrada) {

@@ -61,7 +61,7 @@ public class ConsultaProcessos {
             consulta = consulta.bind("status", status);
         }
         if (StringUtils.hasText(busca)) {
-            consulta = consulta.bind("busca", "%" + busca.strip() + "%");
+            consulta = consulta.bind("busca", "%" + literal(busca.strip()) + "%");
         }
         return consulta.map(ConsultaProcessos::paraResumo).all();
     }
@@ -89,6 +89,15 @@ public class ConsultaProcessos {
                         json.readValue(linha.get("itens", String.class), LISTA_DE_ITENS),
                         linha.get("atualizado_em", OffsetDateTime.class)))
                 .one();
+    }
+
+    /**
+     * O texto digitado é procurado como texto, não como padrão: % e _ são curingas do (i)like
+     * ("_" sozinho acharia tudo). O valor já ia como parâmetro, então isto não é sobre injeção de SQL,
+     * e sim sobre a busca fazer o que o usuário pediu. A barra é o caractere de escape padrão do Postgres.
+     */
+    static String literal(String texto) {
+        return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static ProcessoResumo paraResumo(Readable linha) {

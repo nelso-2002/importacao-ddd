@@ -87,6 +87,25 @@ class ConsultaControllerTest {
     }
 
     @Test
+    void preflightDaTelaEAutorizadoEDeOutroSiteNao() {
+        // URI absoluta: para decidir se é cross-origin, o CORS compara a Origin com o host da requisição,
+        // e o WebTestClient sem servidor monta caminhos relativos (sem host) se não for dito
+        anonimo.options().uri("http://localhost/consultas/processos/stream")
+                .header("Origin", "http://localhost:4200")
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "authorization")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://localhost:4200");
+
+        anonimo.options().uri("http://localhost/consultas/processos")
+                .header("Origin", "http://site-malicioso.test")
+                .header("Access-Control-Request-Method", "GET")
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
     void healthcheckDoDockerNaoPrecisaDeToken() {
         anonimo.get().uri("/actuator/health").exchange().expectStatus().isOk();
     }
@@ -123,6 +142,18 @@ class ConsultaControllerTest {
                 .expectBody().jsonPath("$[*].referencia").isEqualTo(List.of("IMP-2026/0042"));
         http.get().uri("/consultas/processos?busca=imp-2026").exchange()
                 .expectBody().jsonPath("$.length()").isEqualTo(2);
+    }
+
+    @Test
+    void curingasDoIlikeSaoProcuradosComoTexto() {
+        inserir("IMP-2026/0042", "ABERTO", "[]", "1 minute");
+        inserir("IMP_ESPECIAL", "ABERTO", "[]", "1 minute");
+
+        // sem escapar, "_" casaria com qualquer caractere e "%" com tudo: as duas buscas trariam os dois
+        http.get().uri("/consultas/processos?busca=_").exchange()
+                .expectBody().jsonPath("$[*].referencia").isEqualTo(List.of("IMP_ESPECIAL"));
+        http.get().uri("/consultas/processos?busca=%25").exchange()
+                .expectBody().jsonPath("$.length()").isEqualTo(0);
     }
 
     @Test

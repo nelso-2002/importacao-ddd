@@ -18,24 +18,26 @@ import static io.github.nelso2002.importacao.processo.domain.StatusProcesso.REGI
 
 /**
  * Raiz do agregado: toda alteração no processo e nos seus itens passa por aqui.
- * Cada método de negócio valida a regra, muda o estado e registra um evento.
+ * Métodos de negócio só validam e registram eventos; quem muda o estado é aplicar(evento).
+ * Assim o estado é sempre o resultado de reaplicar o histórico, seja um evento novo ou um gravado.
  */
 public class ProcessoImportacao {
 
-    private final ProcessoId id;
-    private final Cnpj importador;
-    private final String referencia;
+    private ProcessoId id;
+    private Cnpj importador;
+    private String referencia;
     private final List<ItemProcesso> itens = new ArrayList<>();
-    private StatusProcesso status = ABERTO;
+    private StatusProcesso status;
     private int ultimoNumeroItem;
     private String motivoCancelamento;
 
+    // quantos eventos já foram aplicados (gravados + pendentes); o event store usa para detectar concorrência
+    private int versao;
+
     private final List<ProcessoEvento> eventos = new ArrayList<>();
 
-    private ProcessoImportacao(ProcessoId id, Cnpj importador, String referencia) {
-        this.id = id;
-        this.importador = importador;
-        this.referencia = referencia;
+    private ProcessoImportacao() {
+        // só via abrir() ou reconstituir()
     }
 
     public static ProcessoImportacao abrir(Cnpj importador, String referencia) {
@@ -45,66 +47,57 @@ public class ProcessoImportacao {
         if (referencia == null || referencia.isBlank()) {
             throw new IllegalArgumentException("Processo inválido: referência é obrigatória");
         }
-        var processo = new ProcessoImportacao(ProcessoId.novo(), importador, referencia.strip());
-        processo.eventos.add(new ProcessoAberto(processo.id, importador, processo.referencia));
+        var processo = new ProcessoImportacao();
+        processo.registrar(new ProcessoAberto(ProcessoId.novo(), importador, referencia.strip()));
         return processo;
     }
 
-    /**
-     * Recria um processo a partir do que foi persistido. Não valida regras nem gera eventos:
-     * os dados já passaram pelas regras quando foram gravados.
-     */
-    public static ProcessoImportacao reconstituir(ProcessoId id, Cnpj importador, String referencia,
-                                                  StatusProcesso status, List<ItemProcesso> itens,
-                                                  int ultimoNumeroItem, String motivoCancelamento) {
-        var processo = new ProcessoImportacao(id, importador, referencia);
-        processo.status = status;
-        processo.itens.addAll(itens);
-        processo.ultimoNumeroItem = ultimoNumeroItem;
-        processo.motivoCancelamento = motivoCancelamento;
+    /** Recria o processo reaplicando o histórico gravado, sem gerar eventos novos. */
+    public static ProcessoImportacao reconstituir(List<ProcessoEvento> historico) {
+        if (historico == null || historico.isEmpty() || !(historico.getFirst() instanceof ProcessoAberto)) {
+            throw new IllegalArgumentException("Histórico inválido: deve começar com ProcessoAberto");
+        }
+        var processo = new ProcessoImportacao();
+        historico.forEach(processo::aplicar);
         return processo;
     }
 
     public ItemProcesso adicionarItem(Ncm ncm, BigDecimal quantidade, Dinheiro valorTotal) {
         exigirAberto("adicionar item");
-        // cria (e valida) antes de avançar o contador: item inválido não consome número
+        // cria (e valida) antes de registrar: item inválido não vira evento nem consome número
         var item = new ItemProcesso(ultimoNumeroItem + 1, ncm, quantidade, valorTotal);
-        ultimoNumeroItem = item.numero();
-        itens.add(item);
-        eventos.add(new ItemAdicionado(id, item));
+        registrar(new ItemAdicionado(id, item));
         return item;
     }
 
     public void removerItem(int numero) {
         exigirAberto("remover item");
-        if (!itens.removeIf(item -> item.numero() == numero)) {
+        if (itens.stream().noneMatch(item -> item.numero() == numero)) {
             throw new RegraDeNegocioException("Item " + numero + " não existe no processo " + id.valor());
         }
-        eventos.add(new ItemRemovido(id, numero));
+        registrar(new ItemRemovido(id, numero));
     }
 
     public void registrarDeclaracao() {
         // a transição é checada primeiro: num processo CANCELADO o erro relevante é o status
-        var novoStatus = status.transicionarPara(REGISTRADO);
+        status.transicionarPara(REGISTRADO);
         if (itens.isEmpty()) {
             throw new RegraDeNegocioException("Não é possível registrar a declaração sem itens");
         }
-        status = novoStatus;
-        eventos.add(new DeclaracaoRegistrada(id));
+        registrar(new DeclaracaoRegistrada(id));
     }
 
     public void desembaracar() {
-        status = status.transicionarPara(DESEMBARACADO);
-        eventos.add(new ProcessoDesembaracado(id));
+        status.transicionarPara(DESEMBARACADO);
+        registrar(new ProcessoDesembaracado(id));
     }
 
     public void cancelar(String motivo) {
         if (motivo == null || motivo.isBlank()) {
             throw new IllegalArgumentException("Cancelamento inválido: motivo é obrigatório");
         }
-        status = status.transicionarPara(CANCELADO);
-        motivoCancelamento = motivo.strip();
-        eventos.add(new ProcessoCancelado(id, motivoCancelamento));
+        status.transicionarPara(CANCELADO);
+        registrar(new ProcessoCancelado(id, motivo.strip()));
     }
 
     /** Devolve os eventos registrados desde a última chamada e esvazia a lista. */
@@ -112,6 +105,36 @@ public class ProcessoImportacao {
         var pendentes = List.copyOf(eventos);
         eventos.clear();
         return pendentes;
+    }
+
+    private void registrar(ProcessoEvento evento) {
+        aplicar(evento);
+        eventos.add(evento);
+    }
+
+    // Único lugar que altera o estado. Não valida nada: um evento é um fato que já aconteceu.
+    // Sem default: um evento novo na sealed interface sem um case aqui não compila.
+    private void aplicar(ProcessoEvento evento) {
+        switch (evento) {
+            case ProcessoAberto(var processoId, var cnpj, var ref) -> {
+                id = processoId;
+                importador = cnpj;
+                referencia = ref;
+                status = ABERTO;
+            }
+            case ItemAdicionado(_, var item) -> {
+                itens.add(item);
+                ultimoNumeroItem = item.numero();
+            }
+            case ItemRemovido(_, var numero) -> itens.removeIf(item -> item.numero() == numero);
+            case DeclaracaoRegistrada _ -> status = REGISTRADO;
+            case ProcessoDesembaracado _ -> status = DESEMBARACADO;
+            case ProcessoCancelado(_, var motivo) -> {
+                status = CANCELADO;
+                motivoCancelamento = motivo;
+            }
+        }
+        versao++;
     }
 
     private void exigirAberto(String acao) {
@@ -145,8 +168,8 @@ public class ProcessoImportacao {
         return motivoCancelamento;
     }
 
-    /** Precisa ser persistido: derivar do maior número atual reaproveitaria números removidos. */
-    public int ultimoNumeroItem() {
-        return ultimoNumeroItem;
+    /** Número de eventos aplicados até agora, incluindo os ainda não retirados. */
+    public int versao() {
+        return versao;
     }
 }

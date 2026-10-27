@@ -1,12 +1,6 @@
 spring:
   application:
     name: processo-service
-  jpa:
-    # o schema é do Flyway; o Hibernate só confere se as entidades batem com ele
-    hibernate:
-      ddl-auto: validate
-    # sem sessão aberta até o fim da requisição: o agregado é carregado inteiro dentro da transação
-    open-in-view: false
   threads:
     virtual:
       enabled: true

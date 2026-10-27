@@ -8,9 +8,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -161,7 +161,7 @@ class ProcessoApiTest {
     void gravacaoConcorrenteViraConflitoComTituloProprio() {
         // provocar a corrida por HTTP seria frágil; o cenário real já é testado no ProcessoRepositoryJpaTest
         var problema = new ApiExceptionHandler()
-                .gravacaoConcorrente(new ObjectOptimisticLockingFailureException("ProcessoEntity", "id"));
+                .gravacaoConcorrente(new OptimisticLockingFailureException("versão já gravada"));
 
         assertThat(problema.getStatus()).isEqualTo(409);
         assertThat(problema.getTitle()).isEqualTo("Gravação concorrente");

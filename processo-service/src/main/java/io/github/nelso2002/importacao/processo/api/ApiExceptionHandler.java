@@ -2,12 +2,12 @@ package io.github.nelso2002.importacao.processo.api;
 
 import io.github.nelso2002.importacao.processo.application.ProcessoNaoEncontradoException;
 import io.github.nelso2002.importacao.processo.domain.RegraDeNegocioException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -42,8 +42,8 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // Mesmo 409, mas o título diz ao cliente que repetir a requisição pode dar certo.
-    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
-    ProblemDetail gravacaoConcorrente(ObjectOptimisticLockingFailureException ex) {
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ProblemDetail gravacaoConcorrente(OptimisticLockingFailureException ex) {
         return problema(HttpStatus.CONFLICT, "Gravação concorrente",
                 "O processo foi alterado por outra requisição; carregue de novo e repita a operação");
     }

@@ -25,6 +25,11 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # Quem define o tópico (3 partições) é o produtor. Sem isto, se este serviço subisse antes,
+        # o próprio pedido de metadados criava o tópico com 1 partição; o processo-service depois o aumentava
+        # para 3, mas o consumidor só descobria as partições novas minutos depois e ficava sem ler 2/3 dos processos.
+        allow.auto.create.topics: false
   webflux:
     problemdetails:
       enabled: true

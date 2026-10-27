@@ -62,6 +62,13 @@ class FluxoCompletoE2ETest {
 
     @AfterAll
     static void derrubarOSistema() throws Exception {
+        // guarda os logs antes do down: depois dele os containers não existem mais (a CI anexa o arquivo se falhar)
+        var logs = new ProcessBuilder("docker", "compose", "-p", PROJETO, "logs", "--no-color", "--timestamps")
+                .directory(RAIZ_DO_REPOSITORIO.toFile())
+                .redirectErrorStream(true)
+                .redirectOutput(Path.of("target", "compose.log").toFile())
+                .start();
+        logs.waitFor(1, TimeUnit.MINUTES);
         compose("down", "-v");   // -v: cada execução começa com bancos e tópico vazios
     }
 

@@ -88,4 +88,6 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: surefire-e2e
-          path: e2e/target/surefire-reports/
+          path: |
+            e2e/target/surefire-reports/
+            e2e/target/compose.log

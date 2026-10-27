@@ -4,3 +4,17 @@ spring:
   threads:
     virtual:
       enabled: true
+  kafka:
+    producer:
+      # chave e valor como texto: o valor é o JSON montado pelo PublicadorOutbox
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # acks=all e idempotência já são o padrão do cliente Kafka 3+; deixar explícito documenta a intenção
+      acks: all
+      properties:
+        enable.idempotence: true
+        # Kafka fora do ar: desistir em segundos, não em minutos. O publicador segura locks na outbox
+        # enquanto espera, e a próxima rodada tenta de novo de qualquer jeito.
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000

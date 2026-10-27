@@ -7,3 +7,9 @@ services:
       - 'POSTGRES_USER=myuser'
     ports:
       - '5432'
+  kafka:
+    # Kafka 4 roda só em modo KRaft (sem Zookeeper); a imagem oficial sobe um nó único pronto para desenvolvimento.
+    image: 'apache/kafka:4.3.1'
+    ports:
+      # porta fixa: o broker anuncia localhost:9092 aos clientes, então o lado de fora tem de ser o mesmo
+      - '9092:9092'

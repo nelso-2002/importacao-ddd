@@ -81,4 +81,4 @@ A CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) roda tudo isso a c
 | 2 | Event Sourcing e CQRS | [#2](https://github.com/nelso-2002/importacao-ddd/pull/2) |
 | 3 | `consulta-service` reativo e front-end Angular | [#3](https://github.com/nelso-2002/importacao-ddd/pull/3) |
 | 4 | Outbox, Kafka, banco por serviço e Docker Compose | [#4](https://github.com/nelso-2002/importacao-ddd/pull/4) |
-| 5 | Testes de ponta a ponta, CI e segurança (Keycloak/JWT) | em andamento |
+| 5 | Testes de ponta a ponta, CI e segurança (Keycloak/JWT) | [#5](https://github.com/nelso-2002/importacao-ddd/pull/5) |

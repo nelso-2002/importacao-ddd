@@ -1,5 +1,6 @@
 package io.github.nelso2002.importacao.processo.infrastructure;
 
+import io.github.nelso2002.importacao.processo.application.UsuarioAtual;
 import io.github.nelso2002.importacao.processo.domain.ProcessoEvento;
 import io.github.nelso2002.importacao.processo.domain.ProcessoId;
 import io.github.nelso2002.importacao.processo.domain.ProcessoImportacao;
@@ -50,12 +51,13 @@ public class ProcessoRepositoryEventStore implements ProcessoRepository {
                 versao++;
                 var tipo = evento.getClass().getSimpleName();
                 var payload = json.writeValueAsString(evento);
-                jdbc.sql("insert into event_store (aggregate_id, version, type, payload) values (?, ?, ?, ?::jsonb)")
-                        .params(processo.id().valor(), versao, tipo, payload)
+                var usuario = UsuarioAtual.nome();
+                jdbc.sql("insert into event_store (aggregate_id, version, type, payload, usuario) values (?, ?, ?, ?::jsonb, ?)")
+                        .params(processo.id().valor(), versao, tipo, payload, usuario)
                         .update();
                 // mesma transação: ou o evento entra no histórico E na fila de publicação, ou em nenhum dos dois
-                jdbc.sql("insert into outbox (aggregate_id, version, type, payload) values (?, ?, ?, ?::jsonb)")
-                        .params(processo.id().valor(), versao, tipo, payload)
+                jdbc.sql("insert into outbox (aggregate_id, version, type, payload, usuario) values (?, ?, ?, ?::jsonb, ?)")
+                        .params(processo.id().valor(), versao, tipo, payload, usuario)
                         .update();
             }
         } catch (DuplicateKeyException e) {

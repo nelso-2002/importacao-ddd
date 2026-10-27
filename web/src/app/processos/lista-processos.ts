@@ -15,6 +15,7 @@ import {
   startWith,
   switchMap,
 } from 'rxjs';
+import { Autenticacao } from '../autenticacao/autenticacao';
 import { FiltroProcessos, ProcessosApi, ProcessoResumo, ROTULOS_STATUS, Status } from './processos-api';
 
 interface Resultado {
@@ -30,6 +31,7 @@ interface Resultado {
 })
 export class ListaProcessos {
   private readonly api = inject(ProcessosApi);
+  protected readonly autenticacao = inject(Autenticacao);
 
   protected readonly rotulos = ROTULOS_STATUS;
   protected readonly todosStatus = Object.keys(ROTULOS_STATUS) as Status[];

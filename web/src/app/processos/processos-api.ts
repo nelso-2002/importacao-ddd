@@ -1,9 +1,10 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, repeat, retry } from 'rxjs';
+import { API } from '../ambiente';
+import { Autenticacao } from '../autenticacao/autenticacao';
 
-// Leituras vêm do consulta-service (/api/consultas → :8081);
-// o histórico vem do event store do processo-service (/api/processos → :8080). Ver proxy.conf.json.
+// Leituras vêm do consulta-service; comandos e histórico (o event store), do processo-service.
 
 export type Status = 'ABERTO' | 'REGISTRADO' | 'DESEMBARACADO' | 'CANCELADO';
 
@@ -35,7 +36,8 @@ export interface ProcessoDetalhe {
 }
 
 // União discriminada pelo campo "tipo": o equivalente TypeScript da sealed interface ProcessoEvento.
-export type EventoHistorico = { versao: number; ocorridoEm: string } & (
+// usuario: quem causou o evento (null nos eventos gravados antes de existir login)
+export type EventoHistorico = { versao: number; ocorridoEm: string; usuario: string | null } & (
   | { tipo: 'ProcessoAberto'; dados: { importador: { numero: string }; referencia: string } }
   | {
       tipo: 'ItemAdicionado';
@@ -74,6 +76,7 @@ export interface NovoItem {
 @Injectable({ providedIn: 'root' })
 export class ProcessosApi {
   private readonly http = inject(HttpClient);
+  private readonly autenticacao = inject(Autenticacao);
 
   listar(filtro: FiltroProcessos): Observable<ProcessoResumo[]> {
     let params = new HttpParams();
@@ -83,39 +86,94 @@ export class ProcessosApi {
     if (filtro.status) {
       params = params.set('status', filtro.status);
     }
-    return this.http.get<ProcessoResumo[]>('/api/consultas/processos', { params });
+    return this.http.get<ProcessoResumo[]>(`${API.consultas}/consultas/processos`, { params });
   }
 
   detalhe(id: string): Observable<ProcessoDetalhe> {
-    return this.http.get<ProcessoDetalhe>(`/api/consultas/processos/${id}`);
+    return this.http.get<ProcessoDetalhe>(`${API.consultas}/consultas/processos/${id}`);
   }
 
   historico(id: string): Observable<EventoHistorico[]> {
-    return this.http.get<EventoHistorico[]>(`/api/processos/${id}/historico`);
+    return this.http.get<EventoHistorico[]>(`${API.processos}/processos/${id}/historico`);
   }
 
   abrir(processo: NovoProcesso): Observable<{ id: string }> {
-    return this.http.post<{ id: string }>('/api/processos', processo);
+    return this.http.post<{ id: string }>(`${API.processos}/processos`, processo);
   }
 
   adicionarItem(processoId: string, item: NovoItem): Observable<ItemResumo> {
-    return this.http.post<ItemResumo>(`/api/processos/${processoId}/itens`, item);
+    return this.http.post<ItemResumo>(`${API.processos}/processos/${processoId}/itens`, item);
   }
 
   /**
-   * Stream SSE do consulta-service como Observable: cada evento "processo" vira um next().
-   * Nada acontece até alguém assinar, e o unsubscribe fecha a conexão (teardown).
-   * Erros de rede não encerram o Observable: o próprio EventSource reconecta sozinho.
+   * Stream SSE do consulta-service como Observable. Com fetch, e não EventSource: o EventSource não envia
+   * cabeçalhos, e o stream exige o token no Authorization (na URL ele iria parar em logs e no histórico).
+   * Nada acontece até alguém assinar; o unsubscribe aborta a conexão (teardown).
    */
   mudancas(): Observable<ProcessoResumo> {
     return new Observable<ProcessoResumo>((assinante) => {
-      const fonte = new EventSource('/api/consultas/processos/stream');
-      fonte.addEventListener('processo', (evento) =>
-        assinante.next(JSON.parse((evento as MessageEvent<string>).data)),
-      );
-      return () => fonte.close();
-    });
+      const conexao = new AbortController();
+      (async () => {
+        const resposta = await fetch(`${API.consultas}/consultas/processos/stream`, {
+          headers: { Accept: 'text/event-stream', Authorization: `Bearer ${this.autenticacao.token()}` },
+          signal: conexao.signal,
+        });
+        if (!resposta.ok || !resposta.body) {
+          throw new Error(`stream: HTTP ${resposta.status}`);
+        }
+        // lê a resposta aos pedaços, conforme chega, e separa os eventos completos
+        const leitor = resposta.body.pipeThrough(new TextDecoderStream()).getReader();
+        let pendente = '';
+        for (;;) {
+          const { value, done } = await leitor.read();
+          if (done) {
+            break;
+          }
+          const { eventos, resto } = separarEventosSse(pendente + value);
+          pendente = resto;
+          eventos
+            .filter((evento) => evento.tipo === 'processo')
+            .forEach((evento) => assinante.next(JSON.parse(evento.dados)));
+        }
+        assinante.complete(); // o servidor fechou: o repeat abaixo reconecta
+      })().catch((erro) => {
+        if (!conexao.signal.aborted) {
+          assinante.error(erro); // o retry abaixo reconecta
+        }
+      });
+      return () => conexao.abort();
+    }).pipe(
+      // O EventSource reconectava sozinho; com fetch, quem reconecta somos nós. Cada nova tentativa
+      // assina de novo e, por isso, pega o token mais recente (renovado pelo oidc-client-ts).
+      repeat({ delay: 3000 }),
+      retry({ delay: 3000 }),
+    );
   }
+}
+
+/**
+ * Separa os eventos completos de um trecho de text/event-stream. Um evento termina numa linha em branco;
+ * o que vier depois do último evento completo volta como "resto", para juntar com o próximo pedaço.
+ * Linhas de comentário (":keep-alive") e eventos sem data são ignorados.
+ */
+export function separarEventosSse(texto: string): { eventos: { tipo: string; dados: string }[]; resto: string } {
+  const blocos = texto.replace(/\r\n/g, '\n').split('\n\n');
+  const resto = blocos.pop() ?? '';
+  const eventos = blocos
+    .map((bloco) => {
+      let tipo = 'message';
+      const dados: string[] = [];
+      for (const linha of bloco.split('\n')) {
+        if (linha.startsWith('event:')) {
+          tipo = linha.slice('event:'.length).trim();
+        } else if (linha.startsWith('data:')) {
+          dados.push(linha.slice('data:'.length).trimStart());
+        }
+      }
+      return { tipo, dados: dados.join('\n') };
+    })
+    .filter((evento) => evento.dados !== '');
+  return { eventos, resto };
 }
 
 /** Mensagem legível a partir do ProblemDetail que os serviços devolvem. */

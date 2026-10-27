@@ -16,7 +16,7 @@ import java.util.UUID;
 @Component
 public class ConsultaProcessos {
 
-    public record EventoHistorico(int versao, String tipo, OffsetDateTime ocorridoEm, JsonNode dados) {}
+    public record EventoHistorico(int versao, String tipo, OffsetDateTime ocorridoEm, String usuario, JsonNode dados) {}
 
     private final JdbcClient jdbc;
     private final JsonMapper json;
@@ -28,12 +28,13 @@ public class ConsultaProcessos {
 
     // Imutável e já em ordem: não precisa de projeção.
     public List<EventoHistorico> historico(UUID id) {
-        return jdbc.sql("select version, type, occurred_at, payload from event_store where aggregate_id = ? order by version")
+        return jdbc.sql("select version, type, occurred_at, usuario, payload from event_store where aggregate_id = ? order by version")
                 .param(id)
                 .query((linha, _) -> new EventoHistorico(
                         linha.getInt("version"),
                         linha.getString("type"),
                         linha.getObject("occurred_at", OffsetDateTime.class),
+                        linha.getString("usuario"),
                         json.readTree(linha.getString("payload"))))
                 .list();
     }

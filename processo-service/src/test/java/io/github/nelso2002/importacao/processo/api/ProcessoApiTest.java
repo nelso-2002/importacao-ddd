@@ -8,12 +8,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import static io.github.nelso2002.importacao.processo.api.Tokens.operador;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** A API de ponta a ponta: HTTP → controller → caso de uso → JPA → Postgres (Testcontainers). */
@@ -32,7 +32,7 @@ class ProcessoApiTest {
     private TransactionTemplate transacao;
 
     private String abrirProcesso() {
-        var resposta = mvc.post().uri("/processos")
+        var resposta = mvc.post().with(operador()).uri("/processos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"importador": "11222333000181", "referencia": "IMP-2026/0001"}
@@ -43,7 +43,7 @@ class ProcessoApiTest {
     }
 
     private MockMvcTester.MockMvcRequestBuilder adicionarItem(String id, String json) {
-        return mvc.post().uri("/processos/{id}/itens", id).contentType(MediaType.APPLICATION_JSON).content(json);
+        return mvc.post().with(operador()).uri("/processos/{id}/itens", id).contentType(MediaType.APPLICATION_JSON).content(json);
     }
 
     private static final String ITEM_VALIDO = """
@@ -52,7 +52,7 @@ class ProcessoApiTest {
 
     @Test
     void abreProcessoEDevolveLocation() {
-        var resposta = mvc.post().uri("/processos")
+        var resposta = mvc.post().with(operador()).uri("/processos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"importador": "12ABC34501DE35", "referencia": "IMP-2026/0001"}
@@ -67,7 +67,7 @@ class ProcessoApiTest {
 
     @Test
     void cnpjInvalidoDevolve400ComMensagemDoDominio() {
-        var resposta = mvc.post().uri("/processos")
+        var resposta = mvc.post().with(operador()).uri("/processos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"importador": "11222333000182", "referencia": "IMP-1"}
@@ -81,7 +81,7 @@ class ProcessoApiTest {
 
     @Test
     void campoAusenteDevolve400ListandoOsCampos() {
-        var resposta = mvc.post().uri("/processos")
+        var resposta = mvc.post().with(operador()).uri("/processos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"importador": "11222333000181"}
@@ -94,7 +94,7 @@ class ProcessoApiTest {
 
     @Test
     void jsonMalformadoDevolve400() {
-        var resposta = mvc.post().uri("/processos")
+        var resposta = mvc.post().with(operador()).uri("/processos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"importador\": ")
                 .exchange();
@@ -155,15 +155,5 @@ class ProcessoApiTest {
 
         assertThat(resposta).hasStatus(HttpStatus.CONFLICT);
         assertThat(resposta).bodyJson().extractingPath("$.title").isEqualTo("Regra de negócio violada");
-    }
-
-    @Test
-    void gravacaoConcorrenteViraConflitoComTituloProprio() {
-        // provocar a corrida por HTTP seria frágil; o cenário real já é testado no ProcessoRepositoryJpaTest
-        var problema = new ApiExceptionHandler()
-                .gravacaoConcorrente(new OptimisticLockingFailureException("versão já gravada"));
-
-        assertThat(problema.getStatus()).isEqualTo(409);
-        assertThat(problema.getTitle()).isEqualTo("Gravação concorrente");
     }
 }

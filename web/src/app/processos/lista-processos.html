@@ -1,6 +1,8 @@
 <div class="titulo">
   <h2>Processos</h2>
-  <a routerLink="/processos/novo" class="botao">Novo processo</a>
+  @if (autenticacao.ehOperador()) {
+    <a routerLink="/processos/novo" class="botao">Novo processo</a>
+  }
 </div>
 
 <form class="filtros" [formGroup]="filtro">

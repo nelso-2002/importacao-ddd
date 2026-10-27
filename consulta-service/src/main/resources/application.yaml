@@ -5,6 +5,16 @@ spring:
   sql:
     init:
       mode: always
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # quem emitiu: o iss do token tem de ser exatamente este (o Keycloak sempre assina como localhost:8180)
+          issuer-uri: http://localhost:8180/realms/importacao
+          # onde buscar as chaves públicas para conferir a assinatura (no Docker, o endereço interno: ver docker-compose.yml)
+          jwk-set-uri: http://localhost:8180/realms/importacao/protocol/openid-connect/certs
+          # para quem: o token tem de ter sido emitido para esta API (escopo importacao-api do realm)
+          audiences: importacao-api
   kafka:
     # Kafka do ambiente de desenvolvimento (compose do processo-service); nos testes vem do Testcontainers
     bootstrap-servers: localhost:9092
@@ -15,9 +25,19 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # Quem define o tópico (3 partições) é o produtor. Sem isto, se este serviço subisse antes,
+        # o próprio pedido de metadados criava o tópico com 1 partição; o processo-service depois o aumentava
+        # para 3, mas o consumidor só descobria as partições novas minutos depois e ficava sem ler 2/3 dos processos.
+        allow.auto.create.topics: false
   webflux:
     problemdetails:
       enabled: true
 
 server:
   port: 8081
+
+seguranca:
+  cors:
+    # a tela Angular (ng serve em desenvolvimento, nginx no docker-compose); em outro ambiente, outra lista
+    origens: http://localhost:4200

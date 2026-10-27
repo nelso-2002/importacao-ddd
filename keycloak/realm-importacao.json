@@ -1,0 +1,107 @@
+{
+  "realm": "importacao",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "OPERADOR",
+        "description": "Envia comandos: abre processos e adiciona itens"
+      },
+      {
+        "name": "CONSULTA",
+        "description": "Só lê: lista, detalhe, histórico e stream"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "web",
+      "name": "Angular (login no navegador)",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audiencia-importacao-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "importacao-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "importacao-cli",
+      "name": "Só para testes e curl (senha direto, sem navegador)",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "audiencia-importacao-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "importacao-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "operador",
+      "enabled": true,
+      "email": "operador@importacao.test",
+      "emailVerified": true,
+      "firstName": "Olga",
+      "lastName": "Operadora",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "operador",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "OPERADOR",
+        "CONSULTA"
+      ]
+    },
+    {
+      "username": "consulta",
+      "enabled": true,
+      "email": "consulta@importacao.test",
+      "emailVerified": true,
+      "firstName": "Caio",
+      "lastName": "Consulta",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "consulta",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "CONSULTA"
+      ]
+    }
+  ]
+}

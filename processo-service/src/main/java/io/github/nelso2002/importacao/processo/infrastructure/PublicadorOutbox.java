@@ -26,7 +26,8 @@ public class PublicadorOutbox {
     private static final Logger log = LoggerFactory.getLogger(PublicadorOutbox.class);
 
     /** Mensagem publicada: o evento com o que o consumidor precisa para ordenar e deduplicar. */
-    public record EventoPublicado(UUID aggregateId, int versao, String tipo, OffsetDateTime ocorridoEm, JsonNode dados) {}
+    public record EventoPublicado(UUID aggregateId, int versao, String tipo, OffsetDateTime ocorridoEm, String usuario,
+                                  JsonNode dados) {}
 
     private record Pendente(long id, EventoPublicado evento) {}
 
@@ -45,7 +46,7 @@ public class PublicadorOutbox {
     public void publicarPendentes() {
         // skip locked: com mais de uma instância do serviço, cada uma pega um lote diferente em vez de esperar
         var pendentes = jdbc.sql("""
-                        select id, aggregate_id, version, type, occurred_at, payload
+                        select id, aggregate_id, version, type, occurred_at, usuario, payload
                         from outbox
                         where published_at is null
                         order by id
@@ -57,6 +58,7 @@ public class PublicadorOutbox {
                         linha.getInt("version"),
                         linha.getString("type"),
                         linha.getObject("occurred_at", OffsetDateTime.class),
+                        linha.getString("usuario"),
                         json.readTree(linha.getString("payload")))))
                 .list();
 

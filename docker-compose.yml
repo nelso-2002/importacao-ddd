@@ -1,4 +1,4 @@
-# Sistema completo: docker compose up -d --build  →  http://localhost:4200
+# Sistema completo: docker compose up -d --build  →  http://localhost:4200  (login: operador/operador)
 #
 #   web (nginx :4200) ──/api/processos──► processo-service ──► postgres-processo
 #        │                                        │ outbox
@@ -67,6 +67,29 @@ services:
       retries: 10
       start_period: 15s
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    # start-dev: banco H2 interno e HTTP sem TLS, só para estudo; --import-realm lê o JSON montado abaixo
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      # Todo token sai com iss=http://localhost:8180/realms/importacao, venha a requisição de onde vier:
+      # o navegador e os serviços concordam sobre quem é o emissor, mesmo vendo o Keycloak por endereços diferentes.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak/realm-importacao.json:/opt/keycloak/data/import/realm-importacao.json:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q UP <&3']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   processo-service:
     build: ./processo-service
     environment:
@@ -74,6 +97,8 @@ services:
       SPRING_DATASOURCE_USERNAME: processo
       SPRING_DATASOURCE_PASSWORD: processo
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # chaves públicas pelo endereço interno; o emissor esperado (localhost:8180) vem do application.yaml
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/importacao/protocol/openid-connect/certs
       # o suporte a Docker Compose do Spring é para desenvolvimento; aqui o compose é este arquivo
       SPRING_DOCKER_COMPOSE_ENABLED: "false"
     ports:
@@ -98,6 +123,8 @@ services:
       SPRING_R2DBC_USERNAME: consulta
       SPRING_R2DBC_PASSWORD: consulta
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # chaves públicas pelo endereço interno; o emissor esperado (localhost:8180) vem do application.yaml
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/importacao/protocol/openid-connect/certs
       SPRING_DOCKER_COMPOSE_ENABLED: "false"
     ports:
       - "8081:8081"

@@ -120,6 +120,12 @@ button,
     opacity: 0.6;
     cursor: default;
   }
+
+  &.secundario {
+    background: transparent;
+    color: var(--texto-suave);
+    border: 1px solid var(--borda);
+  }
 }
 
 .voltar {

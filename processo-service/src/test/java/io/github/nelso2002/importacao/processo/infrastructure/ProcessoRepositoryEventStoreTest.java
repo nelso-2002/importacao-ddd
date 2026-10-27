@@ -3,6 +3,7 @@ package io.github.nelso2002.importacao.processo.infrastructure;
 import io.github.nelso2002.importacao.processo.TestcontainersConfiguration;
 import io.github.nelso2002.importacao.processo.application.AbrirProcesso;
 import io.github.nelso2002.importacao.processo.application.AdicionarItem;
+import io.github.nelso2002.importacao.processo.application.UsuarioAtual;
 import io.github.nelso2002.importacao.processo.domain.Cnpj;
 import io.github.nelso2002.importacao.processo.domain.Dinheiro;
 import io.github.nelso2002.importacao.processo.domain.Ncm;
@@ -84,6 +85,24 @@ class ProcessoRepositoryEventStoreTest {
 
         assertThat(tipos).containsExactly("ProcessoAberto", "ItemAdicionado");
         assertThat(referencia).isEqualTo("IMP-2026/0001");
+    }
+
+    @Test
+    void gravaOUsuarioLigadoAoScopedValueNoEventoENaOutbox() throws Exception {
+        var id = ScopedValue.where(UsuarioAtual.USUARIO, "fulano").call(this::abrir);
+
+        assertThat(jdbc.sql("select usuario from event_store where aggregate_id = ?").param(id.valor())
+                .query(String.class).single()).isEqualTo("fulano");
+        assertThat(jdbc.sql("select usuario from outbox where aggregate_id = ?").param(id.valor())
+                .query(String.class).single()).isEqualTo("fulano");
+    }
+
+    @Test
+    void foraDeUmaRequisicaoOUsuarioESistema() {
+        var id = abrir();
+
+        assertThat(jdbc.sql("select usuario from event_store where aggregate_id = ?").param(id.valor())
+                .query(String.class).single()).isEqualTo("sistema");
     }
 
     @Test

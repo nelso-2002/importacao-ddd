@@ -17,9 +17,11 @@ import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockJwt;
 
 /**
  * HTTP de ponta a ponta com Postgres real: as linhas da projeção são inseridas direto no banco,
@@ -31,6 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConsultaControllerTest {
 
     @Autowired
+    private WebTestClient anonimo;
+
+    // o mesmo cliente com um token de CONSULTA no formato do Keycloak, convertido pela SegurancaConfig de verdade
     private WebTestClient http;
 
     @Autowired
@@ -41,6 +46,10 @@ class ConsultaControllerTest {
 
     @BeforeEach
     void limpar() {
+        http = anonimo.mutateWith(mockJwt()
+                .jwt(token -> token.claim("preferred_username", "consulta")
+                        .claim("realm_access", Map.of("roles", List.of("CONSULTA"))))
+                .authorities(SegurancaConfig::papeis));
         db.sql("delete from processo_resumo").then().block();
     }
 
@@ -54,6 +63,51 @@ class ConsultaControllerTest {
                 .bind("itens", itens).bind("ha", atualizadoHa)
                 .then().block();
         return id;
+    }
+
+    @Test
+    void semTokenDevolve401() {
+        anonimo.get().uri("/consultas/processos").exchange()
+                .expectStatus().isUnauthorized()
+                .expectHeader().value("WWW-Authenticate", valor -> assertThat(valor).startsWith("Bearer"));
+    }
+
+    @Test
+    void streamTambemExigeToken() {
+        anonimo.get().uri("/consultas/processos/stream").accept(MediaType.TEXT_EVENT_STREAM).exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void tokenSemPapelDoSistemaDevolve403() {
+        anonimo.mutateWith(mockJwt().jwt(token -> token.claim("realm_access", Map.of("roles", List.of("OUTRO_SISTEMA"))))
+                        .authorities(SegurancaConfig::papeis))
+                .get().uri("/consultas/processos").exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    void preflightDaTelaEAutorizadoEDeOutroSiteNao() {
+        // URI absoluta: para decidir se é cross-origin, o CORS compara a Origin com o host da requisição,
+        // e o WebTestClient sem servidor monta caminhos relativos (sem host) se não for dito
+        anonimo.options().uri("http://localhost/consultas/processos/stream")
+                .header("Origin", "http://localhost:4200")
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "authorization")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://localhost:4200");
+
+        anonimo.options().uri("http://localhost/consultas/processos")
+                .header("Origin", "http://site-malicioso.test")
+                .header("Access-Control-Request-Method", "GET")
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    void healthcheckDoDockerNaoPrecisaDeToken() {
+        anonimo.get().uri("/actuator/health").exchange().expectStatus().isOk();
     }
 
     @Test
@@ -88,6 +142,18 @@ class ConsultaControllerTest {
                 .expectBody().jsonPath("$[*].referencia").isEqualTo(List.of("IMP-2026/0042"));
         http.get().uri("/consultas/processos?busca=imp-2026").exchange()
                 .expectBody().jsonPath("$.length()").isEqualTo(2);
+    }
+
+    @Test
+    void curingasDoIlikeSaoProcuradosComoTexto() {
+        inserir("IMP-2026/0042", "ABERTO", "[]", "1 minute");
+        inserir("IMP_ESPECIAL", "ABERTO", "[]", "1 minute");
+
+        // sem escapar, "_" casaria com qualquer caractere e "%" com tudo: as duas buscas trariam os dois
+        http.get().uri("/consultas/processos?busca=_").exchange()
+                .expectBody().jsonPath("$[*].referencia").isEqualTo(List.of("IMP_ESPECIAL"));
+        http.get().uri("/consultas/processos?busca=%25").exchange()
+                .expectBody().jsonPath("$.length()").isEqualTo(0);
     }
 
     @Test

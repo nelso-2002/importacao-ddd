@@ -2,7 +2,6 @@ package io.github.nelso2002.importacao.processo.application;
 
 import io.github.nelso2002.importacao.processo.domain.Cnpj;
 import io.github.nelso2002.importacao.processo.domain.StatusProcesso;
-import io.github.nelso2002.importacao.processo.infrastructure.ProcessoRepositoryEmMemoria;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

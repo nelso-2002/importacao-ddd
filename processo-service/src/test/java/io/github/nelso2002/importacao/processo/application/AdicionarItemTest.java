@@ -6,7 +6,6 @@ import io.github.nelso2002.importacao.processo.domain.Ncm;
 import io.github.nelso2002.importacao.processo.domain.ProcessoId;
 import io.github.nelso2002.importacao.processo.domain.ProcessoImportacao;
 import io.github.nelso2002.importacao.processo.domain.RegraDeNegocioException;
-import io.github.nelso2002.importacao.processo.infrastructure.ProcessoRepositoryEmMemoria;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

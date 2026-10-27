@@ -50,6 +50,21 @@ public class ProcessoImportacao {
         return processo;
     }
 
+    /**
+     * Recria um processo a partir do que foi persistido. Não valida regras nem gera eventos:
+     * os dados já passaram pelas regras quando foram gravados.
+     */
+    public static ProcessoImportacao reconstituir(ProcessoId id, Cnpj importador, String referencia,
+                                                  StatusProcesso status, List<ItemProcesso> itens,
+                                                  int ultimoNumeroItem, String motivoCancelamento) {
+        var processo = new ProcessoImportacao(id, importador, referencia);
+        processo.status = status;
+        processo.itens.addAll(itens);
+        processo.ultimoNumeroItem = ultimoNumeroItem;
+        processo.motivoCancelamento = motivoCancelamento;
+        return processo;
+    }
+
     public ItemProcesso adicionarItem(Ncm ncm, BigDecimal quantidade, Dinheiro valorTotal) {
         exigirAberto("adicionar item");
         // cria (e valida) antes de avançar o contador: item inválido não consome número
@@ -128,5 +143,10 @@ public class ProcessoImportacao {
 
     public String motivoCancelamento() {
         return motivoCancelamento;
+    }
+
+    /** Precisa ser persistido: derivar do maior número atual reaproveitaria números removidos. */
+    public int ultimoNumeroItem() {
+        return ultimoNumeroItem;
     }
 }
